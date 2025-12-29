@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://pixijs.download/v6.5.1/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/dudash/pixi-live2d-display/dist/index.min.js"></script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <canvas id="canvas"></canvas>
+    <script>
+        const app = new PIXI.Application({
+            view: document.getElementById('canvas'),
+            transparent: true,
+            autoStart: true,
+            resizeTo: window
+        });
+
+        (async () => {
+            const model = await PIXI.live2d.Live2DModel.from('path/to/your/model.model3.json');
+            app.stage.addChild(model);
+            
+            model.interactive = true;
+            model.on('hit', (hitAreas) => {
+                if (hitAreas.includes('head')) {
+                    model.motion('tap_body');
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

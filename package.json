@@ -1,0 +1,21 @@
+{
+	"name": "HandheldMaid",
+	"version": "1.0.0",
+	"description": "桌宠女仆",
+	"main": "src/main/index.js",
+	"repository": "https://github.com/aDarkMaker/HandheldMaid.git",
+	"author": "aDarkMaker <2261265112@qq.com>",
+	"license": "MIT",
+	"scripts": {
+		"dev": "electron .",
+		"build": "electron-builder"
+	},
+	"devDependencies": {
+		"electron": "^39.2.7"
+	},
+	"dependencies": {
+		"cspell": "^9.4.0",
+		"pixi-live2d-display": "^0.4.0",
+		"prettier": "^3.7.4"
+	}
+}
