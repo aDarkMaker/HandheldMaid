@@ -1,14 +1,4 @@
 {
-    "ignorePaths": [
-        "./yarn.lock",
-        "./package.json",
-        "./.gitignore",
-        "./assets/*"
-    ],
-    "words": [
-        "DSDK",
-        "pointertap",
-        "pointerupoutside",
-        "wanko"
-    ]
+	"ignorePaths": ["./yarn.lock", "./package.json", "./.gitignore", "./assets/*"],
+	"words": ["DSDK", "pointertap", "pointerupoutside", "wanko"]
 }

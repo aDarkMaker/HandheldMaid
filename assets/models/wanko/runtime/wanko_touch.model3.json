@@ -2,9 +2,7 @@
 	"Version": 3,
 	"FileReferences": {
 		"Moc": "wanko_touch.moc3",
-		"Textures": [
-			"wanko_touch.1024/texture_00.png"
-		],
+		"Textures": ["wanko_touch.1024/texture_00.png"],
 		"Physics": "wanko_touch.physics3.json",
 		"DisplayInfo": "wanko_touch.cdi3.json",
 		"Motions": {
@@ -64,17 +62,12 @@
 		{
 			"Target": "Parameter",
 			"Name": "EyeBlink",
-			"Ids": [
-				"PARAM_EYE_L_OPEN",
-				"PARAM_EYE_R_OPEN"
-			]
+			"Ids": ["PARAM_EYE_L_OPEN", "PARAM_EYE_R_OPEN"]
 		},
 		{
 			"Target": "Parameter",
 			"Name": "LipSync",
-			"Ids": [
-				"PARAM_MOUTH_OPEN_Y"
-			]
+			"Ids": ["PARAM_MOUTH_OPEN_Y"]
 		}
 	],
 	"HitAreas": []
