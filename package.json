@@ -2,7 +2,7 @@
 	"name": "HandheldMaid",
 	"version": "1.0.0",
 	"description": "桌宠女仆",
-	"main": "src/main/index.js",
+	"main": "src/main/main.js",
 	"repository": "https://github.com/aDarkMaker/HandheldMaid.git",
 	"author": "aDarkMaker <2261265112@qq.com>",
 	"license": "MIT",
@@ -16,6 +16,7 @@
 	"dependencies": {
 		"cspell": "^9.4.0",
 		"pixi-live2d-display": "^0.4.0",
+		"pixi.js": "6.5.9",
 		"prettier": "^3.7.4"
 	}
 }
