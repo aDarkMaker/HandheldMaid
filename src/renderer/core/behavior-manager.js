@@ -4,6 +4,8 @@ class BehaviorManager {
 	constructor(model) {
 		this.model = model;
 		this.rules = [];
+		this.lastClickTime = 0;
+		this.clickThreshold = 300;
 		this.initListeners();
 	}
 
@@ -11,24 +13,33 @@ class BehaviorManager {
 	 * register a response rule
 	 * @param {Object} rule
 	 * @param {string} rule.name the name of the rule
-	 * @param {string} rule.event the event type (keydown, click, interval)
+	 * @param {string} rule.event the event type (keydown, click, dblclick, interval)
 	 * @param {number} rule.probability the probability of triggering (0-1)
 	 * @param {Function} rule.action the callback after triggered
 	 */
 	registerRule(rule) {
 		this.rules.push({
-			probability: 1, // default 100% trigger
+			probability: 1,
 			...rule,
 		});
 	}
 
 	initListeners() {
 		ipcRenderer.on('global-input', (event, { type, data }) => {
+			if (type === 'click') {
+				const now = Date.now();
+				const diff = now - this.lastClickTime;
+				if (diff < this.clickThreshold && diff > 10) {
+					this.handleEvent('dblclick', data);
+					this.lastClickTime = 0;
+					return;
+				}
+				this.lastClickTime = now;
+			}
 			this.handleEvent(type, data);
 		});
 
 		window.addEventListener('keydown', (e) => this.handleEvent('keydown', e));
-		window.addEventListener('click', (e) => this.handleEvent('click', e));
 	}
 
 	handleEvent(type, data) {
