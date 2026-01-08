@@ -36,7 +36,7 @@ function waitForLive2DSDK() {
 				resolve();
 			} else if (attempts >= maxAttempts) {
 				clearInterval(checkInterval);
-				reject(new Error('CubismCore SDK 加载超时'));
+				reject(new Error('CubismCore SDK load timeout'));
 			}
 		}, 50);
 	});

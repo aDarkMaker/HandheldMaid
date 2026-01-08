@@ -7,7 +7,7 @@ function getAppPath() {
 		if (typeof __dirname !== 'undefined') {
 			appPath = path.resolve(__dirname, '../..');
 		} else {
-			throw new Error('无法确定应用路径');
+			throw new Error('unable to determine application path');
 		}
 	}
 	return appPath;
@@ -19,7 +19,7 @@ function getModelPath() {
 	const modelPath = path.resolve(appPath, 'assets', 'models', 'wanko', 'runtime', 'wanko_touch.model3.json');
 
 	if (!fs.existsSync(modelPath)) {
-		throw new Error(`模型文件不存在: ${modelPath}`);
+		throw new Error(`model file not found: ${modelPath}`);
 	}
 
 	return modelPath;

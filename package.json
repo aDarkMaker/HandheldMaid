@@ -17,6 +17,7 @@
 		"cspell": "^9.4.0",
 		"pixi-live2d-display": "^0.4.0",
 		"pixi.js": "6.5.9",
-		"prettier": "^3.7.4"
+		"prettier": "^3.7.4",
+		"uiohook-napi": "^1.5.4"
 	}
 }
