@@ -60,8 +60,39 @@ async function loadModel(): Promise<Live2DModel> {
 	return model;
 }
 
+/**
+ * Target on-screen (physical) window size. Kept constant so the pet's visual
+ * size is stable regardless of screen resolution or DPI scaling. Settable from
+ * the settings window; defaults to 400x400. When a `SIZE_CHANGED` event arrives
+ * this is replaced and the window resized proportionally.
+ */
+let targetSize = { w: 400, h: 400 };
+
+/**
+ * Size the window to a fixed physical size so the pet's on-screen footprint
+ * stays constant. Because the webview's CSS pixels scale by `devicePixelRatio`,
+ * sizing in physical px means the layout (and the model laid out against it)
+ * keeps a stable physical size across DPI / display changes.
+ */
+function applyWindowSize(app: Application) {
+	const dpr = window.devicePixelRatio || 1;
+	app.renderer.resize(targetSize.w / dpr, targetSize.h / dpr);
+	void safeInvoke(IPC.RESIZE_WINDOW_PHYSICAL, { w: targetSize.w, h: targetSize.h }).catch(() => {});
+}
+
 function layoutModel(model: Live2DModel, app: Application) {
-	const scale = Math.min(app.renderer.width / model.width, app.renderer.height / model.height) * 0.9;
+	// Use the model's original (unscaled) dimensions, not the live width/height
+	// (which change with scale and would make the ratio self-dependent, so the
+	// pet never grew on resize). Cache the original size once on first layout.
+	const m = model as Live2DModel & { __origW?: number; __origH?: number };
+	if (m.__origW === undefined || m.__origH === undefined) {
+		// model.width/height reflect the current scale; divide it out to get the
+		// unscaled size on first layout (scale starts at the loader's default 1).
+		const s = model.scale.x || 1;
+		m.__origW = model.width / s;
+		m.__origH = model.height / s;
+	}
+	const scale = Math.min(app.renderer.width / m.__origW, app.renderer.height / m.__origH) * 0.9;
 	model.scale.set(scale);
 	model.anchor.set(0.5, 0.5);
 	model.x = app.renderer.width / 2;
@@ -194,17 +225,24 @@ async function init() {
 	window.PIXI = PIXI;
 	settings.SCALE_MODE = SCALE_MODES.LINEAR;
 
+	// Load the persisted pet size before sizing the renderer.
+	const size = await safeInvoke<[number, number]>(IPC.GET_PET_SIZE).catch(() => [400, 400]);
+	if (size) {
+		targetSize = { w: Math.round(size[0]), h: Math.round(size[1]) };
+	}
+	const dprInit = window.devicePixelRatio || 1;
+
 	const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 	const app = new Application({
 		view: canvas,
 		backgroundAlpha: 0,
 		antialias: true,
-		resizeTo: window,
-		width: window.innerWidth,
-		height: window.innerHeight,
+		width: targetSize.w / dprInit,
+		height: targetSize.h / dprInit,
 	});
 
 	let model = await mountModel(app);
+	applyWindowSize(app);
 
 	if (isTauri) {
 		await startActionListener().catch((e) => console.error('[HandheldMaid] listener error:', e));
@@ -226,6 +264,29 @@ async function init() {
 		}).catch((e) => console.error('[HandheldMaid] model-changed listener error:', e));
 	}
 
+	// Keep the pet's physical size constant when the window, DPI scaling, or
+	// display changes: enforce the physical window size, resize the renderer to
+	// the matching CSS size, then re-layout and resync the click-through area.
+	const relayout = () => {
+		applyWindowSize(app);
+		layoutModel(model, app);
+		updateHitArea(model);
+	};
+	window.addEventListener('resize', relayout);
+	// Fires when DPI scaling changes (e.g. moving the window onto a differently
+	// scaled display, or changing the system scale). Re-assert the physical size.
+	const matchDpr = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+	matchDpr.addEventListener('change', relayout);
+
+	// Resize the pet when the size is changed in the settings window. The size
+	// arrives as `[w, h]` physical px from the backend broadcast.
+	if (isTauri) {
+		await listen<[number, number]>(EVENT.SIZE_CHANGED, (e) => {
+			targetSize = { w: Math.round(e.payload[0]), h: Math.round(e.payload[1]) };
+			relayout();
+		}).catch((err) => console.error('[HandheldMaid] size-changed listener error:', err));
+	}
+
 	// Gaze following: backend emits the cursor position (window-relative) from
 	// the global rdev hook, so the pet's eyes follow the pointer even off-window.
 	if (isTauri) {
@@ -233,12 +294,6 @@ async function init() {
 			focusModel(e.payload.x, e.payload.y);
 		}).catch((e) => console.error('[HandheldMaid] cursor listener error:', e));
 	}
-
-	// Re-layout on resize; keep the hit area in sync so click-through tracks the model.
-	window.addEventListener('resize', () => {
-		layoutModel(model, app);
-		updateHitArea(model);
-	});
 
 	// Idle timer: every 30s, feed an Interval event to the engine.
 	window.setInterval(() => {

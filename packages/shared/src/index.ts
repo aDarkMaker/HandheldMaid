@@ -91,6 +91,9 @@ export const IPC = {
 	LIST_TOOLS: 'list_tools',
 	INVOKE_TOOL: 'invoke_tool',
 	MOVE_WINDOW: 'move_window',
+	RESIZE_WINDOW_PHYSICAL: 'resize_window_physical',
+	GET_PET_SIZE: 'get_pet_size',
+	SET_PET_SIZE: 'set_pet_size',
 	SET_IGNORE_MOUSE_EVENTS: 'set_ignore_mouse_events',
 	REGISTER_HIT_AREA: 'register_hit_area',
 	LIST_MODELS: 'list_models',
@@ -108,6 +111,8 @@ export const EVENT = {
 	ACTION: 'hm://action',
 	/** Carries a `ModelInfo` when the active model changes (settings -> main window). */
 	MODEL_CHANGED: 'hm://model-changed',
+	/** Carries a `[w, h]` physical size when the pet size changes (settings -> main window). */
+	SIZE_CHANGED: 'hm://size-changed',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];

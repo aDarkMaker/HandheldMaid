@@ -26,6 +26,16 @@ function renderShell() {
 			</section>
 
 			<section class="section">
+				<label class="section__label">Size</label>
+				<p class="section__desc">Adjust the pet's on-screen size.</p>
+				<div class="size-row">
+					<input type="range" id="size-slider" min="200" max="1000" step="25" value="400" />
+					<span class="opt__id" id="size-value">400px</span>
+				</div>
+				<p class="status" id="size-status"></p>
+			</section>
+
+			<section class="section">
 				<label class="section__label">AI Mode</label>
 				<p class="section__desc">Chat and tool use via an LLM (coming soon).</p>
 				<div class="toggle-row">
@@ -113,6 +123,37 @@ async function renderModels() {
 	});
 }
 
+async function wireSize() {
+	const slider = document.getElementById('size-slider') as HTMLInputElement | null;
+	const value = document.getElementById('size-value')!;
+	const status = document.getElementById('size-status')!;
+	if (!slider) return;
+
+	// Mirror the persisted size into the slider (physical px side).
+	try {
+		const [w] = await invoke<[number, number]>(IPC.GET_PET_SIZE);
+		slider.value = String(w);
+		value.textContent = `${w}px`;
+	} catch {
+		/* fall back to the default shown in the markup */
+	}
+
+	// Persist + broadcast on release so dragging isn't thrashing IPC.
+	slider.addEventListener('input', () => {
+		value.textContent = `${slider.value}px`;
+	});
+	slider.addEventListener('change', async () => {
+		const s = Number(slider.value);
+		status.textContent = 'Applying…';
+		try {
+			await invoke(IPC.SET_PET_SIZE, { w: s, h: s });
+			status.textContent = `Set to ${s}px`;
+		} catch (e) {
+			status.textContent = `Failed: ${e}`;
+		}
+	});
+}
+
 function wireAiToggle() {
 	const toggle = document.getElementById('ai-toggle') as HTMLInputElement | null;
 	const status = document.getElementById('ai-status')!;
@@ -130,4 +171,5 @@ function wireAiToggle() {
 
 renderShell();
 void renderModels();
+void wireSize();
 wireAiToggle();

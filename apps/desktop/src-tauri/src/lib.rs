@@ -27,6 +27,8 @@ mod models;
 
 const EVENT_ACTION: &str = "hm://action";
 const EVENT_MODEL_CHANGED: &str = "hm://model-changed";
+/// Tauri event emitted when the pet's physical size changes (settings -> main).
+const EVENT_SIZE_CHANGED: &str = "hm://size-changed";
 
 /// Screen-space rectangle the pet occupies, used for dynamic click-through
 /// (absolute screen pixels).
@@ -62,7 +64,13 @@ struct AppState {
     click_through: Mutex<bool>,
     /// The currently active model.
     current_model: Mutex<Option<ModelInfo>>,
+    /// The pet's physical window size (px), set from the settings window.
+    /// Shared as the single source of truth between the two webviews.
+    pet_size: Mutex<(u32, u32)>,
 }
+
+/// Default physical pet size.
+const DEFAULT_PET_SIZE: (u32, u32) = (400, 400);
 
 /// Resolve the `assets/` directory. In dev it lives at the repo root (three
 /// levels above src-tauri); in prod it is the bundled resource dir.
@@ -227,6 +235,33 @@ fn move_window(window: tauri::WebviewWindow, x: i32, y: i32) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
+/// Get the current pet physical size. Returns the default on first run.
+#[tauri::command]
+fn get_pet_size(state: tauri::State<AppState>) -> (u32, u32) {
+    *state.pet_size.lock().unwrap()
+}
+
+/// Set the pet's physical size, persist it, and broadcast it so the main
+/// window re-applies it immediately. The size lives here (not in webview
+/// localStorage) because the settings and main windows have isolated storage.
+#[tauri::command]
+fn set_pet_size(app: tauri::AppHandle, state: tauri::State<AppState>, w: u32, h: u32) -> Result<(), String> {
+    let clamped = (w.clamp(100, 2000), h.clamp(100, 2000));
+    *state.pet_size.lock().unwrap() = clamped;
+    let _ = app.emit(EVENT_SIZE_CHANGED, clamped);
+    Ok(())
+}
+
+/// Resize the window to a physical size. Keeps the pet's on-screen size
+/// stable across DPI / display changes (window sized in physical px, renderer
+/// layout in matching CSS px).
+#[tauri::command]
+fn resize_window_physical(window: tauri::WebviewWindow, w: u32, h: u32) -> Result<(), String> {
+    window
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: w, height: h }))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn set_ignore_mouse_events(window: tauri::WebviewWindow, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
@@ -350,6 +385,7 @@ pub fn run() {
         hit_area: Mutex::new(None),
         click_through: Mutex::new(true),
         current_model: Mutex::new(None),
+        pet_size: Mutex::new(DEFAULT_PET_SIZE),
     };
 
     tauri::Builder::default()
@@ -365,6 +401,9 @@ pub fn run() {
             list_tools,
             invoke_tool,
             move_window,
+            resize_window_physical,
+            get_pet_size,
+            set_pet_size,
             set_ignore_mouse_events,
             register_hit_area,
             list_models,
@@ -377,6 +416,9 @@ pub fn run() {
             let window = app.get_webview_window("main").expect("main window missing");
             // Start click-through so the pet floats over the desktop by default.
             let _ = window.set_ignore_cursor_events(true);
+            // Apply the persisted pet size (defaults to 400x400) on launch.
+            let (pw, ph) = *app.state::<AppState>().pet_size.lock().unwrap();
+            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: pw, height: ph }));
 
             // Resolve the initial model (prefer "miku", else the first discovered).
             let initial = {
