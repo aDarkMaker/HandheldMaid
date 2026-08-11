@@ -10,10 +10,9 @@ import { IPC, EVENT } from '@handheld-maid/shared';
 import type { ModelInfo, Rule, Subscription } from '@handheld-maid/shared';
 
 /**
- * True when running inside a real Tauri webview (has the injected internals).
- * When false (e.g. opening the dev URL in a plain browser tab), Tauri IPC is
- * unavailable so we gracefully degrade to model-only rendering instead of
- * throwing `Cannot read properties of undefined (reading 'transformCallback')`.
+ * True when running inside a real Tauri webview. When false (e.g. opening the
+ * dev URL in a plain browser tab), Tauri IPC is unavailable so we gracefully
+ * degrade to model-only rendering instead of throwing on undefined internals.
  */
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
@@ -53,8 +52,7 @@ function waitForCubismCore(timeoutMs = 5000): Promise<void> {
 let currentModelUrl = '/assets/models/wanko/runtime/wanko_touch.model3.json';
 
 async function loadModel(): Promise<Live2DModel> {
-	// Ask the backend for the active model; fall back to wanko if unavailable
-	// (e.g. running outside Tauri in a plain browser tab).
+	// Fall back to miku if the backend is unavailable (e.g. a plain browser tab).
 	const info = await safeInvoke<ModelInfo>(IPC.GET_CURRENT_MODEL).catch(() => undefined);
 	currentModelUrl = info ? `/assets/${info.path}` : '/assets/models/miku/runtime/miku.model3.json';
 	const model = await Live2DModel.from(currentModelUrl);
@@ -77,10 +75,9 @@ function layoutModel(model: Live2DModel, app: Application) {
  */
 function updateHitArea(model: Live2DModel) {
 	const bounds = model.getBounds();
-	// rdev's MouseMove coordinates and the backend's window outer_position are
-	// in physical pixels, but `window.screenX` and Pixi's bounds are in logical
-	// (CSS) pixels. Convert to physical pixels so the hit area matches the
-	// cursor coordinates the backend compares against.
+	// rdev coordinates and the backend's window outer_position are physical
+	// pixels, but `window.screenX` and Pixi's bounds are logical (CSS) pixels.
+	// Convert to physical so the hit area matches the cursor coordinates.
 	const dpr = window.devicePixelRatio || 1;
 	const x = Math.round((window.screenX + bounds.x) * dpr);
 	const y = Math.round((window.screenY + bounds.y) * dpr);
@@ -97,22 +94,18 @@ async function mountModel(app: Application): Promise<Live2DModel> {
 	const model = await loadModel();
 	app.stage.addChild(model);
 	layoutModel(model, app);
-	// Register the hit area so the backend can drive dynamic click-through.
 	updateHitArea(model);
 
-	// Pet tap -> forward to the behavior engine (engine picks the action).
+	// Pet tap -> forward to the behavior engine (it picks the action).
 	model.interactive = true;
 	model.on('pointertap', () => {
 		void safeInvoke(IPC.DISPATCH_EVENT, { kind: 'pettap' }).catch(() => {});
 	});
-	// Right-click on the pet -> native context menu (Open Settings / Quit).
+	// Right-click -> native context menu (Open Settings / Quit).
 	model.on('rightdown', () => {
 		void safeInvoke(IPC.SHOW_CONTEXT_MENU).catch(() => {});
 	});
 
-	// Bind the action executor and suppress the authorship watermark (credits
-	// are in the About page). Watermark suppression is generic: it discovers
-	// watermark parts by name and forces their opacity to 0.
 	bindModel(model);
 	void suppressWatermark(app, model);
 
@@ -124,15 +117,12 @@ async function mountModel(app: Application): Promise<Live2DModel> {
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /**
- * Suppress the model's watermark (authorship overlay).
- *
- * The watermark is a Live2D *Part* (e.g. "水印.psd") whose opacity defaults to
- * 1 in the .moc3. We discover watermark parts by reading the model3.json's
- * DisplayInfo (cdi3.json) — any Part whose name matches "水印"/"watermark" —
- * then force each part's opacity to 0 on every `beforeModelUpdate` (the last
- * hook before render, after motion/expression/eyeBlink/focus/physics/pose have
- * all set their values, so nothing overwrites our 0 before draw). Credits are
- * in the About page. No-op for models without watermark parts.
+ * Suppress the model's watermark (authorship overlay). The watermark is a
+ * Live2D *Part* whose opacity defaults to 1 in the .moc3. We discover watermark
+ * parts by name from the cdi3.json, then force each part's opacity to 0 on
+ * every `beforeModelUpdate` (the last hook before render, after motion/
+ * expression/eyeBlink/focus/physics/pose have set their values, so nothing
+ * overwrites our 0 before draw). No-op for models without watermark parts.
  */
 async function suppressWatermark(_app: Application, model: Live2DModel) {
 	const partIds = await watermarkPartIds();
@@ -175,18 +165,16 @@ async function watermarkPartIds(): Promise<string[]> {
 
 /** Register the default behavior: pet-tap -> Tap motion, idle timer -> Idle motion. */
 async function registerDefaultBehavior() {
-	// Rule: a tap on the pet emits the "on_pet" named event.
+	// Pet tap emits "on_pet" -> play the Tap motion.
 	const petRule: Rule = { name: 'pet', event: 'pettap', probability: 1, emit_event: 'on_pet' };
-	// Subscription: "on_pet" -> play the Tap motion.
 	const petSub: Subscription = {
 		id: 'pet_tap',
 		event: 'on_pet',
 		action: { category: 'model', motion: 'Tap' },
 		weight: 1,
 	};
-	// Rule: an idle tick (every 30s) emits "on_idle", 30% chance each tick.
+	// Idle tick (every 30s, 30% chance) emits "on_idle" -> play an Idle motion.
 	const idleRule: Rule = { name: 'idle', event: 'interval', probability: 0.3, emit_event: 'on_idle' };
-	// Subscription: "on_idle" -> play an Idle motion.
 	const idleSub: Subscription = {
 		id: 'idle_motion',
 		event: 'on_idle',
@@ -216,7 +204,6 @@ async function init() {
 		height: window.innerHeight,
 	});
 
-	// Load the initial model and bind its interactions.
 	let model = await mountModel(app);
 
 	if (isTauri) {
@@ -239,9 +226,8 @@ async function init() {
 		}).catch((e) => console.error('[HandheldMaid] model-changed listener error:', e));
 	}
 
-	// Gaze following: the backend emits the cursor position (relative to the
-	// window) from the global rdev hook, so the pet's eyes follow the pointer
-	// anywhere on screen — even when click-through.
+	// Gaze following: backend emits the cursor position (window-relative) from
+	// the global rdev hook, so the pet's eyes follow the pointer even off-window.
 	if (isTauri) {
 		await listen<{ x: number; y: number }>('hm://cursor', (e) => {
 			focusModel(e.payload.x, e.payload.y);
@@ -259,32 +245,34 @@ async function init() {
 		void safeInvoke(IPC.DISPATCH_EVENT, { kind: 'interval' }).catch(() => {});
 	}, 30_000);
 
-	// Register the default behavior rules + subscriptions.
 	await registerDefaultBehavior();
 
-	// Drag-to-move: when the left button is down on the pet, move the window.
+	// Drag-to-move: left button down on the pet moves the window. Uses absolute
+	// screen coordinates derived from a grabbed offset, so the move can't drift
+	// from accumulated increments or out-of-order async invokes.
+	const dpr = window.devicePixelRatio || 1;
 	let dragging = false;
-	let lastX = 0;
-	let lastY = 0;
+	let grabX = 0;
+	let grabY = 0;
 	canvas.addEventListener('mousedown', (e) => {
-		if (e.button !== 0) return; // left button only
+		if (e.button !== 0) return;
 		dragging = true;
-		lastX = e.screenX;
-		lastY = e.screenY;
+		// Offset of the grab point relative to the window's top-left.
+		grabX = e.clientX;
+		grabY = e.clientY;
 	});
 	window.addEventListener('mousemove', (e) => {
 		if (!dragging) return;
-		const dx = e.screenX - lastX;
-		const dy = e.screenY - lastY;
-		lastX = e.screenX;
-		lastY = e.screenY;
-		void safeInvoke(IPC.MOVE_WINDOW, { x: dx, y: dy }).catch(() => {});
+		// Desired window top-left (logical px) keeps the grab point under the
+		// cursor; convert to physical px to match the backend's set_position.
+		const wx = Math.round((e.screenX - grabX) * dpr);
+		const wy = Math.round((e.screenY - grabY) * dpr);
+		void safeInvoke(IPC.MOVE_WINDOW, { x: wx, y: wy }).catch(() => {});
 		// Keep the hit area in sync as the window moves.
 		updateHitArea(model);
 	});
-	// Reset drag on any button release — including when the window was hidden
-	// mid-drag (the mouseup may have been missed). Also reset on blur and when
-	// the window becomes visible again (e.g. after closing settings).
+	// Reset drag on any button release, blur, or visibility change — covers a
+	// missed mouseup when the window was hidden mid-drag.
 	const stopDrag = () => {
 		dragging = false;
 	};
@@ -293,9 +281,8 @@ async function init() {
 	window.addEventListener('mouseleave', stopDrag);
 	document.addEventListener('visibilitychange', stopDrag);
 
-	// Click-through is now driven dynamically by the backend (rdev global
-	// cursor vs the registered hit area), so we do NOT force the whole window
-	// non-click-through here — that would make blank areas block clicks again.
+	// Click-through is driven dynamically by the backend (rdev global cursor
+	// vs the registered hit area), so we don't force it here.
 
 	document.body.style.background = 'transparent';
 }

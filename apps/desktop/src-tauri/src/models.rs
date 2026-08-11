@@ -1,9 +1,7 @@
 //! Live2D model discovery.
 //!
-//! Scans `assets/models/<id>/runtime/*.model3.json` and returns a list of
-//! [`ModelInfo`]. The frontend loads a model from `/assets/<path>` (served by
-//! the Vite middleware in dev, bundled in prod), so `path` is relative to the
-//! `assets/` directory.
+//! Scans `assets/models/<id>/runtime/*.model3.json` and returns [`ModelInfo`].
+//! `path` is relative to `assets/` so the frontend can load `/assets/<path>`.
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

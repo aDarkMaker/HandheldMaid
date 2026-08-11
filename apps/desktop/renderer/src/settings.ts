@@ -119,7 +119,7 @@ function wireAiToggle() {
 	if (!toggle) return;
 	toggle.addEventListener('change', () => {
 		status.textContent = toggle.checked ? 'AI mode is coming soon — setting saved.' : 'AI mode disabled.';
-		// Uncheck after feedback so the toggle reflects the not-yet-implemented state.
+		// Reflect the not-yet-implemented state by unchecking after feedback.
 		if (toggle.checked) {
 			window.setTimeout(() => {
 				toggle.checked = false;

@@ -3,6 +3,7 @@
 //! This module only compiles when the `input` feature is enabled, so the core
 //! stays buildable in environments without display/input access (CI, tests).
 
+use crate::behavior::EventKind;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, warn};
 
@@ -20,6 +21,23 @@ pub enum InputKind {
     KeyDown,
     KeyUp,
     Click,
+    /// Global mouse move. Very high frequency — callers must throttle handling.
+    MouseMove,
+}
+
+/// Map a captured input kind to a behavior event kind.
+///
+/// `MouseMove` has no corresponding behavior event (too high-frequency for the
+/// rule engine); it is handled by a dedicated click-through channel in the shell.
+impl From<InputKind> for EventKind {
+    fn from(k: InputKind) -> Self {
+        match k {
+            InputKind::KeyDown => EventKind::KeyDown,
+            InputKind::KeyUp => EventKind::KeyUp,
+            InputKind::Click => EventKind::Click,
+            InputKind::MouseMove => EventKind::Click,
+        }
+    }
 }
 
 /// Callback handed every captured input event.
@@ -58,6 +76,9 @@ fn translate(event: &rdev::Event, cb: &InputCallback) {
             let (x, y) = coords(event);
             debug!(button = ?btn, x, y, "click");
             Some(InputEvent { kind: InputKind::Click, x, y })
+        }
+        rdev::EventType::MouseMove { x, y } => {
+            Some(InputEvent { kind: InputKind::MouseMove, x: x as i32, y: y as i32 })
         }
         _ => None,
     };

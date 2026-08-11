@@ -23,6 +23,9 @@
 	</head>
 	<body>
 		<canvas id="canvas"></canvas>
+		<!-- Live2D Cubism Core: must load as a classic script before the app so
+		     the global `Live2DCubismCore` is available to pixi-live2d-display. -->
+		<script src="/live2dcubismcore.min.js"></script>
 		<script type="module" src="/src/main.ts"></script>
 	</body>
 </html>

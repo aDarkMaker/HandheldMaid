@@ -13,11 +13,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
 tracing = "0.1"
+async-trait = "0.1"
+rand = "0.8"
 
 # Platform input/system operations are behind feature flags so the core
 # stays buildable in headless contexts (CI, unit tests).
 rdev = { version = "0.5", optional = true }
 enigo = { version = "0.2", optional = true }
+
+[dev-dependencies]
+# Deterministic RNG for tests that exercise weighted random selection.
+rand_chacha = "0.3"
+# Async test runtime for tool::execute tests (dev-only; core ships no runtime).
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [features]
 default = ["input", "automation"]
