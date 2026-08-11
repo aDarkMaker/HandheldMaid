@@ -1,0 +1,36 @@
+{
+	"$schema": "https://schema.tauri.app/config/2",
+	"productName": "HandheldMaid",
+	"version": "0.1.0",
+	"identifier": "com.adarkmaker.handheldmaid",
+	"build": {
+		"frontendDist": "../renderer/dist",
+		"devUrl": "http://localhost:1420",
+		"beforeDevCommand": "bun run dev",
+		"beforeBuildCommand": "bun run build"
+	},
+	"app": {
+		"withGlobalTauri": false,
+		"windows": [
+			{
+				"label": "main",
+				"title": "HandheldMaid",
+				"width": 400,
+				"height": 400,
+				"transparent": true,
+				"decorations": false,
+				"alwaysOnTop": true,
+				"resizable": false,
+				"skipTaskbar": true
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"icon": ["icons/icon.png", "icons/icon.ico"]
+	}
+}

@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "apps/desktop/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/aDarkMaker/HandheldMaid"
+authors = ["aDarkMaker <2261265112@qq.com>"]
+
+[workspace.dependencies]
+# Shared crate versions live here so every member stays in sync.

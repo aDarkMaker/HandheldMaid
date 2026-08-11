@@ -1,0 +1,22 @@
+{
+	"name": "@handheld-maid/renderer",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc --noEmit && vite build",
+		"preview": "vite preview"
+	},
+	"dependencies": {
+		"@tauri-apps/api": "^2.0.0",
+		"@handheld-maid/shared": "workspace:*",
+		"pixi-live2d-display": "^0.4.0",
+		"pixi.js": "6.5.9"
+	},
+	"devDependencies": {
+		"typescript": "^5.6.0",
+		"vite": "^5.4.0",
+		"vite-plugin-singlefile": "^2.0.0"
+	}
+}

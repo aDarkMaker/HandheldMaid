@@ -1,0 +1,25 @@
+[package]
+name = "hm-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cross-platform core for HandheldMaid: behavior engine, input hooks, system ops."
+
+[dependencies]
+# Keep this lean. The core must compile on every target Tauri supports.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
+
+# Platform input/system operations are behind feature flags so the core
+# stays buildable in headless contexts (CI, unit tests).
+rdev = { version = "0.5", optional = true }
+enigo = { version = "0.2", optional = true }
+
+[features]
+default = ["input", "automation"]
+input = ["dep:rdev"]
+automation = ["dep:enigo"]

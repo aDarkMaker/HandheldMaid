@@ -1,0 +1,29 @@
+[package]
+name = "desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "HandheldMaid Tauri 2 desktop shell."
+
+[lib]
+name = "desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+hm-core = { path = "../../../crates/core" }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[features]
+# By default Tauri ships a custom protocol; `cargo tauri dev` toggles this.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

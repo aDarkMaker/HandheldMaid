@@ -1,0 +1,14 @@
+{
+	"name": "desktop",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"scripts": {
+		"dev": "bun --cwd renderer run dev",
+		"build": "bun --cwd renderer run build",
+		"preview": "bun --cwd renderer run preview"
+	},
+	"dependencies": {
+		"@handheld-maid/shared": "workspace:*"
+	}
+}

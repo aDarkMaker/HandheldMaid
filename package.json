@@ -1,23 +1,20 @@
 {
-	"name": "HandheldMaid",
-	"version": "1.0.0",
-	"description": "桌宠女仆",
-	"main": "src/main/main.js",
+	"name": "handheld-maid",
+	"private": true,
+	"version": "0.1.0",
+	"description": "Cross-platform desktop pet (Live2D) built with Tauri 2 + Rust + TypeScript.",
+	"license": "MIT",
 	"repository": "https://github.com/aDarkMaker/HandheldMaid.git",
 	"author": "aDarkMaker <2261265112@qq.com>",
-	"license": "MIT",
+	"packageManager": "bun@1.3.11",
+	"workspaces": ["apps/desktop", "apps/desktop/renderer", "packages/*"],
 	"scripts": {
-		"dev": "electron .",
-		"build": "electron-builder"
+		"dev": "bun --filter desktop dev",
+		"build": "bun --filter desktop build",
+		"lint": "echo \"TODO: lint\"",
+		"format": "prettier --write ."
 	},
 	"devDependencies": {
-		"electron": "^39.2.7"
-	},
-	"dependencies": {
-		"cspell": "^9.4.0",
-		"pixi-live2d-display": "^0.4.0",
-		"pixi.js": "6.5.9",
-		"prettier": "^3.7.4",
-		"uiohook-napi": "^1.5.4"
+		"prettier": "^3.7.4"
 	}
 }
