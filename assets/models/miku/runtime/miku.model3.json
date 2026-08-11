@@ -1,0 +1,43 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "miku.moc3",
+		"Textures": [
+			"miku.4096/texture_00.png",
+			"miku.4096/texture_01.png",
+			"miku.4096/texture_02.png",
+			"miku.4096/texture_03.png",
+			"miku.4096/texture_04.png",
+			"miku.4096/texture_05.png"
+		],
+		"Physics": "miku.physics3.json",
+		"DisplayInfo": "miku.cdi3.json",
+		"Expressions": [
+			{ "Name": "QQ人", "File": "expressions/QQ人.exp3.json" },
+			{ "Name": "前倾", "File": "expressions/前倾.exp3.json" },
+			{ "Name": "唱歌", "File": "expressions/唱歌.exp3.json" },
+			{ "Name": "圈圈", "File": "expressions/圈圈.exp3.json" },
+			{ "Name": "比心", "File": "expressions/比心.exp3.json" },
+			{ "Name": "脸红", "File": "expressions/脸红.exp3.json" },
+			{ "Name": "葱", "File": "expressions/葱.exp3.json" }
+		],
+		"Motions": {
+			"Idle": [{ "File": "motion/Scene1.motion3.json" }]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeROpen",
+				"ParamEyeLOpen"
+			]
+		}
+	]
+}

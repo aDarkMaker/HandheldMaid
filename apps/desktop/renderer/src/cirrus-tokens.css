@@ -1,0 +1,42 @@
+/**
+ * Cirrus design tokens. Shared across settings (and future) windows.
+ * All colors are referenced via CSS variables; never hardcode raw values.
+ * Source: D:\Downloads\DailyReportDisplay\.skills\design.skills.md
+ */
+:root {
+	/* Colors */
+	--color-ink: #0e1116;
+	--color-cloud: #ffffff;
+	--color-edge: #e3e8ee;
+	--color-mist: #5b6472;
+	--color-signal: #2e7def;
+	--color-citrus: #ff7a3d;
+	--color-meadow: #2bc48a;
+	/* Auxiliary */
+	--color-ink-hover: #1a1f28;
+	--color-fill: #f3f6fa;
+	--color-fill-border: #eef2f6;
+	--color-placeholder: #8a93a3;
+
+	/* Typography */
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+	--font-tight: 'Inter Tight', 'Inter', system-ui, sans-serif;
+
+	/* Radii (pill = controls, 8 = checkboxes, 14 = icon tiles, 20-22 = option cards, 28 = data cards) */
+	--radius-pill: 999px;
+	--radius-sm: 8px;
+	--radius-md: 14px;
+	--radius-card: 20px;
+	--radius-lg: 28px;
+
+	/* Shadows (two layers, ink-only) */
+	--shadow-rest: 0 1px 1px rgba(14, 17, 22, 0.05), 0 18px 36px -18px rgba(14, 17, 22, 0.18);
+	--shadow-hover: 0 1px 1px rgba(14, 17, 22, 0.06), 0 24px 48px -24px rgba(14, 17, 22, 0.32);
+	/* Focus ring (the only permitted outer glow) */
+	--ring: 0 0 0 3px rgba(46, 125, 239, 0.32);
+
+	/* Motion */
+	--ease: cubic-bezier(0.22, 1, 0.36, 1);
+	--t-transform: 140ms;
+	--t-state: 200ms;
+}

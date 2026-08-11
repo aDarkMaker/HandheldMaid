@@ -6,8 +6,8 @@
 	"build": {
 		"frontendDist": "../renderer/dist",
 		"devUrl": "http://localhost:1420",
-		"beforeDevCommand": "bun run dev",
-		"beforeBuildCommand": "bun run build"
+		"beforeDevCommand": { "script": "bun run dev", "cwd": "../renderer" },
+		"beforeBuildCommand": { "script": "bun run build", "cwd": "../renderer" }
 	},
 	"app": {
 		"withGlobalTauri": false,
@@ -19,6 +19,7 @@
 				"height": 400,
 				"transparent": true,
 				"decorations": false,
+				"shadow": false,
 				"alwaysOnTop": true,
 				"resizable": false,
 				"skipTaskbar": true
