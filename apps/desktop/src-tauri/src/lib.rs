@@ -19,6 +19,7 @@ use hm_core::tools::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_N
 use models::ModelInfo;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
@@ -29,6 +30,47 @@ const EVENT_ACTION: &str = "hm://action";
 const EVENT_MODEL_CHANGED: &str = "hm://model-changed";
 /// Tauri event emitted when the pet's physical size changes (settings -> main).
 const EVENT_SIZE_CHANGED: &str = "hm://size-changed";
+/// Tauri event emitted when input-action settings change (settings -> main),
+/// so the main window can reflect enable/disable state in the UI.
+const EVENT_INPUT_SETTINGS_CHANGED: &str = "hm://input-settings-changed";
+/// Tauri event emitted when an input action should fire (backend -> main).
+/// The frontend picks a random motion/expression from the model and plays it.
+const EVENT_TRIGGER_INPUT_ACTION: &str = "hm://trigger-input-action";
+
+/// Per-keyboard-press trigger probability for input-triggered actions.
+const KEYBOARD_TRIGGER_PROBABILITY: f64 = 0.01;
+/// Default cooldown (ms) after an input-triggered action finishes.
+const DEFAULT_COOLDOWN_MS: u64 = 30_000;
+
+/// Input-action settings: enable flags + cooldown. Shared source of truth
+/// between the settings and main windows (their localStorage is isolated).
+#[derive(Debug, Clone, Copy, Serialize)]
+struct InputActionSettings {
+    /// Whether keyboard input can trigger random actions.
+    keyboard_enabled: bool,
+    /// Whether clicking the pet can trigger random actions.
+    click_enabled: bool,
+    /// Cooldown (ms) after an action finishes before keyboard can trigger again.
+    cooldown_ms: u64,
+}
+
+impl Default for InputActionSettings {
+    fn default() -> Self {
+        Self {
+            keyboard_enabled: true,
+            click_enabled: true,
+            cooldown_ms: DEFAULT_COOLDOWN_MS,
+        }
+    }
+}
+
+/// Input-action runtime state: settings + cooldown bookkeeping.
+struct InputActionState {
+    settings: Mutex<InputActionSettings>,
+    /// Instant (ms since some epoch) when the current cooldown expires.
+    /// `None` means no cooldown is active (ready to trigger).
+    cooldown_until: Mutex<Option<std::time::Instant>>,
+}
 
 /// Screen-space rectangle the pet occupies, used for dynamic click-through
 /// (absolute screen pixels).
@@ -67,6 +109,8 @@ struct AppState {
     /// The pet's physical window size (px), set from the settings window.
     /// Shared as the single source of truth between the two webviews.
     pet_size: Mutex<(u32, u32)>,
+    /// Input-action state: enable flags, cooldown, and cooldown bookkeeping.
+    input_action: InputActionState,
 }
 
 /// Default physical pet size.
@@ -82,6 +126,56 @@ fn resolve_assets_dir(app: &tauri::AppHandle) -> PathBuf {
     app.path().resource_dir().unwrap_or_else(|_| PathBuf::from("assets"))
 }
 
+/// Decide whether an input event (`PetTap` / `KeyDown`) should trigger a
+/// random action, based on enable flags, cooldown, and (for keyboard) a low
+/// per-press probability. Returns the gate decision.
+///
+/// - Click: always triggers when enabled; never blocked by cooldown, but
+///   *resets* the cooldown timer (so it counts toward the shared cooldown).
+/// - Keyboard: triggers only when enabled, not in cooldown, and the low
+///   probability roll passes.
+fn gate_input_action(
+    state: &AppState,
+    kind: EventKind,
+    rng: &mut impl rand::Rng,
+) -> Option<&'static str> {
+    let settings = *state.input_action.settings.lock().unwrap();
+    match kind {
+        EventKind::PetTap if settings.click_enabled => Some("click"),
+        EventKind::KeyDown if settings.keyboard_enabled => {
+            // Block while cooldown is active.
+            let until = state.input_action.cooldown_until.lock().unwrap();
+            if let Some(t) = *until {
+                if std::time::Instant::now() < t {
+                    return None;
+                }
+            }
+            drop(until);
+            // Low per-press probability gate.
+            if rng.gen::<f64>() < KEYBOARD_TRIGGER_PROBABILITY {
+                Some("keyboard")
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Start the cooldown timer after an input-triggered action finishes.
+fn start_cooldown(state: &AppState) {
+    let ms = state.input_action.settings.lock().unwrap().cooldown_ms;
+    *state.input_action.cooldown_until.lock().unwrap() =
+        Some(std::time::Instant::now() + std::time::Duration::from_millis(ms));
+}
+
+/// Reset (clear) the cooldown timer — used when a click triggers so it does
+/// not inherit a leftover cooldown, and the click itself begins a fresh one
+/// only after its action finishes (via `hm://action-done`).
+fn reset_cooldown(state: &AppState) {
+    *state.input_action.cooldown_until.lock().unwrap() = None;
+}
+
 /// Dispatch a behavior event end-to-end: match rules, roll probability,
 /// weighted-select subscriptions, then route each action by category.
 ///
@@ -89,6 +183,28 @@ fn resolve_assets_dir(app: &tauri::AppHandle) -> PathBuf {
 /// `dispatch_event` IPC, timers). Locks are held only for each read; tool
 /// execution is awaited *after* the registry lock is released.
 async fn dispatch(app: tauri::AppHandle, kind: EventKind) {
+    // Input-action gate: click/keyboard may trigger a random action directly,
+    // bypassing the rule engine (the action content is chosen in the frontend
+    // from the model's motions/expressions). A triggered action emits a
+    // `hm://trigger-input-action` event; the frontend plays it and notifies
+    // back via `hm://action-done` to start the cooldown.
+    {
+        let state = app.state::<AppState>();
+        let mut rng = state.rng.lock().unwrap();
+        if let Some(source) = gate_input_action(&state, kind, &mut *rng) {
+            // Click always fires and resets the cooldown; the cooldown is
+            // (re)started when the frontend reports the action finished.
+            if source == "click" {
+                reset_cooldown(&state);
+            }
+            let _ = app.emit(
+                EVENT_TRIGGER_INPUT_ACTION,
+                serde_json::json!({ "source": source }),
+            );
+            return;
+        }
+    }
+
     let actions: Vec<Action> = {
         let state = app.state::<AppState>();
         let engine = state.behavior.lock().unwrap();
@@ -262,6 +378,40 @@ fn resize_window_physical(window: tauri::WebviewWindow, w: u32, h: u32) -> Resul
         .map_err(|e| e.to_string())
 }
 
+/// Get the input-action settings (enable flags + cooldown).
+#[tauri::command]
+fn get_input_action_settings(state: tauri::State<AppState>) -> InputActionSettings {
+    *state.input_action.settings.lock().unwrap()
+}
+
+/// Set the input-action settings and broadcast so the main window can react.
+#[tauri::command]
+fn set_input_action_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    keyboard_enabled: bool,
+    click_enabled: bool,
+    cooldown_ms: u64,
+) -> Result<(), String> {
+    let s = InputActionSettings {
+        keyboard_enabled,
+        click_enabled,
+        cooldown_ms: cooldown_ms.clamp(0, 600_000),
+    };
+    *state.input_action.settings.lock().unwrap() = s;
+    let _ = app.emit(EVENT_INPUT_SETTINGS_CHANGED, s);
+    Ok(())
+}
+
+/// Called by the frontend when an input-triggered action finishes playing,
+/// so the backend starts the shared cooldown timer. (Click actions also
+/// reach here, so they (re)start the cooldown as specified.)
+#[tauri::command]
+fn notify_action_done(state: tauri::State<AppState>) -> Result<(), String> {
+    start_cooldown(&state);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_ignore_mouse_events(window: tauri::WebviewWindow, ignore: bool) -> Result<(), String> {
     window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
@@ -386,6 +536,10 @@ pub fn run() {
         click_through: Mutex::new(true),
         current_model: Mutex::new(None),
         pet_size: Mutex::new(DEFAULT_PET_SIZE),
+        input_action: InputActionState {
+            settings: Mutex::new(InputActionSettings::default()),
+            cooldown_until: Mutex::new(None),
+        },
     };
 
     tauri::Builder::default()
@@ -404,6 +558,9 @@ pub fn run() {
             resize_window_physical,
             get_pet_size,
             set_pet_size,
+            get_input_action_settings,
+            set_input_action_settings,
+            notify_action_done,
             set_ignore_mouse_events,
             register_hit_area,
             list_models,

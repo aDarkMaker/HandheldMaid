@@ -80,6 +80,19 @@ export interface BehaviorEvent {
 	data?: unknown;
 }
 
+/** Input-action settings: enable flags + cooldown. Mirrors the Rust struct. */
+export interface InputActionSettings {
+	/** Whether keyboard input can trigger random actions. */
+	keyboard_enabled: boolean;
+	/** Whether clicking the pet can trigger random actions. */
+	click_enabled: boolean;
+	/** Cooldown (ms) after an action finishes before keyboard can trigger again. */
+	cooldown_ms: number;
+}
+
+/** Source that triggered an input action (`hm://trigger-input-action` payload). */
+export type InputActionSource = 'click' | 'keyboard';
+
 /** IPC command names exposed by the Tauri backend. */
 export const IPC = {
 	REGISTER_RULE: 'register_rule',
@@ -94,6 +107,9 @@ export const IPC = {
 	RESIZE_WINDOW_PHYSICAL: 'resize_window_physical',
 	GET_PET_SIZE: 'get_pet_size',
 	SET_PET_SIZE: 'set_pet_size',
+	GET_INPUT_ACTION_SETTINGS: 'get_input_action_settings',
+	SET_INPUT_ACTION_SETTINGS: 'set_input_action_settings',
+	NOTIFY_ACTION_DONE: 'notify_action_done',
 	SET_IGNORE_MOUSE_EVENTS: 'set_ignore_mouse_events',
 	REGISTER_HIT_AREA: 'register_hit_area',
 	LIST_MODELS: 'list_models',
@@ -113,6 +129,10 @@ export const EVENT = {
 	MODEL_CHANGED: 'hm://model-changed',
 	/** Carries a `[w, h]` physical size when the pet size changes (settings -> main window). */
 	SIZE_CHANGED: 'hm://size-changed',
+	/** Carries an `InputActionSettings` when input-action settings change. */
+	INPUT_SETTINGS_CHANGED: 'hm://input-settings-changed',
+	/** Carries `{ source }` telling the frontend to play a random action. */
+	TRIGGER_INPUT_ACTION: 'hm://trigger-input-action',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
