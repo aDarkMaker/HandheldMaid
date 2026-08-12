@@ -2,7 +2,7 @@
 
 * {
 	box-sizing: border-box;
-	/* Globally disable text selection — settings is a UI surface, not content. */
+	/* Settings is a UI surface, not content — disable text selection. */
 	-webkit-user-select: none;
 	user-select: none;
 }
@@ -28,14 +28,15 @@ html {
 	scrollbar-width: none;
 }
 
+/* ── Layout ─────────────────────────────────────────────────────────────── */
 .settings {
-	padding: 24px;
+	padding: 28px 24px 40px;
 	max-width: 480px;
 	margin: 0 auto;
 }
 
 .settings__title {
-	margin: 0 0 4px;
+	margin: 0 0 2px;
 	font-family: var(--font-tight);
 	font-weight: 600;
 	font-size: 22px;
@@ -48,14 +49,14 @@ html {
 	font-size: 12.5px;
 }
 
-/* Section */
+/* ── Section (data card, 28px radius) ───────────────────────────────────── */
 .section {
 	background: var(--color-cloud);
 	border: 1px solid var(--color-edge);
-	border-radius: var(--radius-card);
+	border-radius: var(--radius-lg); /* 28px — data card */
 	box-shadow: var(--shadow-rest);
 	padding: 20px;
-	margin-bottom: 16px;
+	margin-bottom: 14px;
 	transition: box-shadow var(--t-state) var(--ease);
 }
 .section:hover {
@@ -64,10 +65,11 @@ html {
 
 .section__label {
 	display: block;
-	margin: 0 0 4px;
+	margin: 0 0 2px;
 	font-weight: 500;
 	font-size: 13px;
 }
+
 .section__desc {
 	margin: 0 0 16px;
 	color: var(--color-mist);
@@ -75,12 +77,14 @@ html {
 	line-height: 1.5;
 }
 
-/* Option card radio group */
+/* ── Option card radio group (20px radius) ──────────────────────────────── */
 .opt-group {
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
 }
+
+/* Option card: 20-22px radius per Cirrus (NOT pill). */
 .opt {
 	position: relative;
 	display: flex;
@@ -89,7 +93,7 @@ html {
 	padding: 14px 16px;
 	background: var(--color-cloud);
 	border: 1px solid var(--color-edge);
-	border-radius: var(--radius-pill);
+	border-radius: var(--radius-card); /* 20px — option card */
 	cursor: pointer;
 	transition:
 		border-color var(--t-state) var(--ease),
@@ -97,9 +101,10 @@ html {
 		background var(--t-state) var(--ease);
 }
 .opt:hover {
-	border-color: var(--color-ink);
+	border-color: var(--color-ink-hover);
 }
-/* Visually hide the native radio, preserve keyboard access */
+
+/* Visually hide the native radio, preserve keyboard access. */
 .opt input {
 	position: absolute;
 	opacity: 0;
@@ -108,7 +113,7 @@ html {
 .opt:focus-within {
 	box-shadow: var(--ring);
 }
-/* Selected: ink dot + ink border + light fill */
+/* Selected: ink border + light fill + ink dot. */
 .opt:has(input:checked) {
 	background: var(--color-fill);
 	border-color: var(--color-ink);
@@ -141,13 +146,18 @@ html {
 	font-variant-numeric: tabular-nums;
 }
 
-/* Toggle switch (AI mode placeholder) */
+/* ── Toggle switch ──────────────────────────────────────────────────────── */
 .toggle-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
+	padding: 6px 0;
 }
+.toggle-row + .toggle-row {
+	margin-top: 2px;
+}
+
 .toggle {
 	position: relative;
 	width: 44px;
@@ -163,22 +173,27 @@ html {
 	position: absolute;
 	inset: 0;
 	border-radius: var(--radius-pill);
-	background: var(--color-edge);
-	transition: background var(--t-state) var(--ease);
+	background: var(--color-fill);
+	border: 1px solid var(--color-fill-border);
+	transition:
+		background var(--t-state) var(--ease),
+		border-color var(--t-state) var(--ease);
 }
 .toggle__thumb {
 	position: absolute;
 	top: 3px;
 	left: 3px;
-	width: 20px;
-	height: 20px;
+	width: 18px;
+	height: 18px;
 	border-radius: var(--radius-pill);
 	background: var(--color-cloud);
-	box-shadow: 0 1px 2px rgba(14, 17, 22, 0.2);
+	/* Two-layer ink-only shadow per Cirrus. */
+	box-shadow: var(--shadow-thumb);
 	transition: transform var(--t-transform) var(--ease);
 }
 .toggle input:checked + .toggle__track {
 	background: var(--color-ink);
+	border-color: var(--color-ink);
 }
 .toggle input:checked + .toggle__track .toggle__thumb,
 .toggle:has(input:checked) .toggle__thumb {
@@ -189,25 +204,103 @@ html {
 	border-radius: var(--radius-pill);
 }
 
-/* Size slider */
-.size-row {
+/* ── Slider (custom, Cirrus-styled — no native accent-color) ────────────── */
+.field-row {
 	display: flex;
 	align-items: center;
 	gap: 14px;
+	margin-top: 14px;
 }
-.size-row input[type='range'] {
-	flex: 1;
-	accent-color: var(--color-ink);
+.field-row__label {
+	color: var(--color-mist);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	flex-shrink: 0;
+	min-width: 48px;
 }
 
-/* Status / about */
+.slider {
+	position: relative;
+	flex: 1;
+	height: 28px;
+	display: flex;
+	align-items: center;
+}
+.slider input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	opacity: 0;
+	cursor: pointer;
+}
+/* Track. */
+.slider__track {
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 6px;
+	border-radius: var(--radius-pill);
+	background: var(--color-fill);
+	border: 1px solid var(--color-fill-border);
+}
+/* Filled portion (via --pct inline style from JS, 0-100). */
+.slider__fill {
+	position: absolute;
+	left: 0;
+	height: 6px;
+	border-radius: var(--radius-pill);
+	background: var(--color-ink);
+	pointer-events: none;
+	width: var(--pct, 0%);
+}
+/* Thumb. */
+.slider__thumb {
+	position: absolute;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--radius-pill);
+	background: var(--color-cloud);
+	border: 1px solid var(--color-ink);
+	box-shadow: var(--shadow-thumb);
+	transform: translateX(-50%);
+	left: var(--pct, 0%);
+	pointer-events: none;
+	transition:
+		box-shadow var(--t-state) var(--ease),
+		transform var(--t-transform) var(--ease);
+}
+.slider:hover .slider__thumb {
+	box-shadow: var(--shadow-thumb-hover);
+}
+.slider input:focus-visible ~ .slider__track {
+	box-shadow: var(--ring);
+}
+.slider__value {
+	color: var(--color-ink);
+	font-size: 12.5px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	flex-shrink: 0;
+	min-width: 44px;
+	text-align: right;
+}
+
+/* ── Status / About ─────────────────────────────────────────────────────── */
 .status {
 	margin-top: 12px;
 	font-size: 12.5px;
-	color: var(--color-meadow);
+	color: var(--color-mist);
 	font-variant-numeric: tabular-nums;
 	min-height: 18px;
+	transition: color var(--t-state) var(--ease);
 }
+.status--ok {
+	color: var(--color-meadow);
+}
+
 .about-section {
 	display: flex;
 	flex-direction: column;
@@ -273,13 +366,4 @@ html {
 	border: 1px solid var(--color-fill-border);
 	border-radius: var(--radius-sm);
 	padding: 1px 5px;
-}
-
-/* Disabled (AI placeholder) */
-.opt--disabled {
-	opacity: 0.55;
-	cursor: not-allowed;
-}
-.opt--disabled:hover {
-	border-color: var(--color-edge);
 }

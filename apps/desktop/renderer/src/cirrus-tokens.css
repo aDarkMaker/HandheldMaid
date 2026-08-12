@@ -32,6 +32,9 @@
 	/* Shadows (two layers, ink-only) */
 	--shadow-rest: 0 1px 1px rgba(14, 17, 22, 0.05), 0 18px 36px -18px rgba(14, 17, 22, 0.18);
 	--shadow-hover: 0 1px 1px rgba(14, 17, 22, 0.06), 0 24px 48px -24px rgba(14, 17, 22, 0.32);
+	/* Small control thumb (toggle/slider) — two ink-only layers. */
+	--shadow-thumb: 0 1px 1px rgba(14, 17, 22, 0.06), 0 4px 8px -4px rgba(14, 17, 22, 0.2);
+	--shadow-thumb-hover: 0 1px 1px rgba(14, 17, 22, 0.06), 0 6px 12px -4px rgba(14, 17, 22, 0.28);
 	/* Focus ring (the only permitted outer glow) */
 	--ring: 0 0 0 3px rgba(46, 125, 239, 0.32);
 

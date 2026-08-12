@@ -1,13 +1,13 @@
 /// <reference types="vite/client" />
 
 import { invoke } from '@tauri-apps/api/core';
-import { IPC, type ModelInfo } from '@handheld-maid/shared';
+import { IPC, type InputActionSettings, type ModelInfo } from '@handheld-maid/shared';
 import './settings.css';
 
 /**
  * Settings window entry. Independent of the main pet window — no Pixi/Live2D
- * here. Renders Cirrus-styled option cards for model selection and an AI-mode
- * toggle placeholder.
+ * here. Renders Cirrus-styled controls for model selection, size, input
+ * actions, and an AI-mode toggle placeholder.
  */
 
 const root = document.getElementById('app')!;
@@ -28,11 +28,47 @@ function renderShell() {
 			<section class="section">
 				<label class="section__label">Size</label>
 				<p class="section__desc">Adjust the pet's on-screen size.</p>
-				<div class="size-row">
-					<input type="range" id="size-slider" min="200" max="1000" step="25" value="400" />
-					<span class="opt__id" id="size-value">400px</span>
+				<div class="field-row">
+					<span class="field-row__label">Scale</span>
+					<div class="slider" id="size-slider-wrap">
+						<input type="range" id="size-slider" min="200" max="1000" step="25" value="400" />
+						<span class="slider__track"></span>
+						<span class="slider__fill"></span>
+						<span class="slider__thumb"></span>
+					</div>
+					<span class="slider__value" id="size-value">400px</span>
 				</div>
 				<p class="status" id="size-status"></p>
+			</section>
+
+			<section class="section">
+				<label class="section__label">Input Actions</label>
+				<p class="section__desc">Random actions triggered by clicking or typing. Click always fires; typing fires rarely with a cooldown.</p>
+				<div class="toggle-row">
+					<span class="opt__name">Click triggers actions</span>
+					<label class="toggle">
+						<input type="checkbox" id="click-toggle" />
+						<span class="toggle__track"><span class="toggle__thumb"></span></span>
+					</label>
+				</div>
+				<div class="toggle-row">
+					<span class="opt__name">Keyboard triggers actions</span>
+					<label class="toggle">
+						<input type="checkbox" id="keyboard-toggle" />
+						<span class="toggle__track"><span class="toggle__thumb"></span></span>
+					</label>
+				</div>
+				<div class="field-row">
+					<span class="field-row__label">Cooldown</span>
+					<div class="slider" id="cooldown-slider-wrap">
+						<input type="range" id="cooldown-slider" min="0" max="120" step="5" value="30" />
+						<span class="slider__track"></span>
+						<span class="slider__fill"></span>
+						<span class="slider__thumb"></span>
+					</div>
+					<span class="slider__value" id="cooldown-value">30s</span>
+				</div>
+				<p class="status" id="input-status"></p>
 			</section>
 
 			<section class="section">
@@ -75,6 +111,34 @@ function renderShell() {
 	`;
 }
 
+/** Sync a custom slider's fill/thumb position from its native range input. */
+function syncSliderPct(wrap: HTMLElement, input: HTMLInputElement) {
+	const min = Number(input.min);
+	const max = Number(input.max);
+	const pct = ((Number(input.value) - min) / (max - min)) * 100;
+	wrap.style.setProperty('--pct', `${pct}%`);
+}
+
+/** Wire a custom slider: keep --pct in sync on input, call onChange on release. */
+function wireSlider(
+	wrapId: string,
+	inputId: string,
+	onInput: (v: number) => void,
+	onChange: (v: number) => void | Promise<void>,
+) {
+	const wrap = document.getElementById(wrapId) as HTMLElement | null;
+	const input = document.getElementById(inputId) as HTMLInputElement | null;
+	if (!wrap || !input) return;
+	syncSliderPct(wrap, input);
+	input.addEventListener('input', () => {
+		syncSliderPct(wrap, input);
+		onInput(Number(input.value));
+	});
+	input.addEventListener('change', () => {
+		void onChange(Number(input.value));
+	});
+}
+
 async function renderModels() {
 	const list = document.getElementById('model-list')!;
 	const status = document.getElementById('model-status')!;
@@ -105,7 +169,7 @@ async function renderModels() {
 					<span class="opt__name">${m.name}</span>
 					<span class="opt__id">${m.id}</span>
 				</span>
-			</label>`
+			</label>`,
 		)
 		.join('');
 
@@ -113,9 +177,11 @@ async function renderModels() {
 		input.addEventListener('change', async () => {
 			if (!input.checked) return;
 			status.textContent = 'Switching…';
+			status.classList.remove('status--ok');
 			try {
 				await invoke<ModelInfo>(IPC.SWITCH_MODEL, { id: input.value });
 				status.textContent = `Switched to ${input.value}`;
+				status.classList.add('status--ok');
 			} catch (e) {
 				status.textContent = `Failed: ${e}`;
 			}
@@ -124,34 +190,86 @@ async function renderModels() {
 }
 
 async function wireSize() {
-	const slider = document.getElementById('size-slider') as HTMLInputElement | null;
 	const value = document.getElementById('size-value')!;
 	const status = document.getElementById('size-status')!;
-	if (!slider) return;
+	const input = document.getElementById('size-slider') as HTMLInputElement | null;
+	if (!input) return;
 
 	// Mirror the persisted size into the slider (physical px side).
 	try {
 		const [w] = await invoke<[number, number]>(IPC.GET_PET_SIZE);
-		slider.value = String(w);
+		input.value = String(w);
 		value.textContent = `${w}px`;
 	} catch {
 		/* fall back to the default shown in the markup */
 	}
 
-	// Persist + broadcast on release so dragging isn't thrashing IPC.
-	slider.addEventListener('input', () => {
-		value.textContent = `${slider.value}px`;
-	});
-	slider.addEventListener('change', async () => {
-		const s = Number(slider.value);
+	wireSlider(
+		'size-slider-wrap',
+		'size-slider',
+		(v) => {
+			value.textContent = `${v}px`;
+		},
+		async (v) => {
+			status.textContent = 'Applying…';
+			status.classList.remove('status--ok');
+			try {
+				await invoke(IPC.SET_PET_SIZE, { w: v, h: v });
+				status.textContent = `Set to ${v}px`;
+				status.classList.add('status--ok');
+			} catch (e) {
+				status.textContent = `Failed: ${e}`;
+			}
+		},
+	);
+}
+
+async function wireInputActions() {
+	const clickToggle = document.getElementById('click-toggle') as HTMLInputElement | null;
+	const keyboardToggle = document.getElementById('keyboard-toggle') as HTMLInputElement | null;
+	const cooldownValue = document.getElementById('cooldown-value')!;
+	const status = document.getElementById('input-status')!;
+	const cooldownInput = document.getElementById('cooldown-slider') as HTMLInputElement | null;
+	if (!clickToggle || !keyboardToggle || !cooldownInput) return;
+
+	// Load current settings into the controls.
+	let current: InputActionSettings;
+	try {
+		current = await invoke<InputActionSettings>(IPC.GET_INPUT_ACTION_SETTINGS);
+	} catch {
+		current = { keyboard_enabled: true, click_enabled: true, cooldown_ms: 30_000 };
+	}
+	clickToggle.checked = current.click_enabled;
+	keyboardToggle.checked = current.keyboard_enabled;
+	cooldownInput.value = String(Math.round(current.cooldown_ms / 1000));
+	cooldownValue.textContent = `${cooldownInput.value}s`;
+
+	const apply = async () => {
 		status.textContent = 'Applying…';
+		status.classList.remove('status--ok');
 		try {
-			await invoke(IPC.SET_PET_SIZE, { w: s, h: s });
-			status.textContent = `Set to ${s}px`;
+			await invoke(IPC.SET_INPUT_ACTION_SETTINGS, {
+				keyboard_enabled: keyboardToggle.checked,
+				click_enabled: clickToggle.checked,
+				cooldown_ms: Number(cooldownInput.value) * 1000,
+			});
+			status.textContent = 'Saved';
+			status.classList.add('status--ok');
 		} catch (e) {
 			status.textContent = `Failed: ${e}`;
 		}
-	});
+	};
+
+	clickToggle.addEventListener('change', apply);
+	keyboardToggle.addEventListener('change', apply);
+	wireSlider(
+		'cooldown-slider-wrap',
+		'cooldown-slider',
+		(v) => {
+			cooldownValue.textContent = `${v}s`;
+		},
+		apply,
+	);
 }
 
 function wireAiToggle() {
@@ -172,4 +290,5 @@ function wireAiToggle() {
 renderShell();
 void renderModels();
 void wireSize();
+void wireInputActions();
 wireAiToggle();
