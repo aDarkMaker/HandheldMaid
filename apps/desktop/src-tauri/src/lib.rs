@@ -1,607 +1,58 @@
 //! Tauri 2 desktop shell for HandheldMaid.
 //!
 //! Thin: window lifecycle, IPC commands, and wiring the platform input
-//! hooks
-//! from `hm-core`. All real logic lives in the core crate so it can be reused
-//! by future frontends (mobile, CLI).
+//! hooks from `hm-core`. All real logic lives in the core crate so it can be
+//! reused by future frontends (mobile, CLI).
 //!
 //! Event flow:
 //!   input source -> BehaviorEngine.dispatch(kind) -> Vec<Action>
 //!     Action::Model/Speak -> emit("hm://action", action)  (frontend runs it)
 //!     Action::Tool        -> ToolRegistry.invoke(name, args) (core runs it)
+//!
+//! Module layout:
+//! - [`state`]        shared app state, settings structs, asset resolution
+//! - [`events`]       Tauri event name constants
+//! - [`dispatch`]     behavior event dispatch (the single event sink)
+//! - [`input_wiring`] rdev global input -> click-through + gaze + dispatch
+//! - [`commands`]     IPC commands, grouped by domain
+//! - [`models`]       Live2D model discovery
 
-use hm_core::action::Action;
-use hm_core::automation::Automation;
-use hm_core::behavior::{BehaviorEngine, EventKind, Rule};
-use hm_core::event_bus::Subscription;
-use hm_core::input::{InputCallback, InputEvent, InputListener};
-use hm_core::tool::{Tool, ToolInfo, ToolRegistry};
-use hm_core::tools::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_NAME};
-use models::ModelInfo;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
-use serde::Serialize;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use tauri::{Emitter, Manager};
-
+mod commands;
+mod dispatch;
+mod events;
+mod input_wiring;
 mod models;
+mod state;
 
-const EVENT_ACTION: &str = "hm://action";
-const EVENT_MODEL_CHANGED: &str = "hm://model-changed";
-/// Tauri event emitted when the pet's physical size changes (settings -> main).
-const EVENT_SIZE_CHANGED: &str = "hm://size-changed";
-/// Tauri event emitted when input-action settings change (settings -> main),
-/// so the main window can reflect enable/disable state in the UI.
-const EVENT_INPUT_SETTINGS_CHANGED: &str = "hm://input-settings-changed";
-/// Tauri event emitted when an input action should fire (backend -> main).
-/// The frontend picks a random motion/expression from the model and plays it.
-const EVENT_TRIGGER_INPUT_ACTION: &str = "hm://trigger-input-action";
-/// Tauri event emitted before the settings panel opens: the main window fades
-/// out, then asks the backend to hide it (so the disappear isn't abrupt).
-const EVENT_PANEL_OPENING: &str = "hm://panel-opening";
-/// Tauri event emitted after the settings panel closes and the main window is
-/// shown again: the main window fades back in.
-const EVENT_PANEL_CLOSING: &str = "hm://panel-closing";
+use commands::panel::handle_menu_event;
+use input_wiring::start_input_listener;
+use state::{resolve_assets_dir, AppState};
+use std::sync::{Arc, Mutex};
+use tauri::Manager;
 
-/// Per-keyboard-press trigger probability for input-triggered actions.
-const KEYBOARD_TRIGGER_PROBABILITY: f64 = 0.01;
-/// Default cooldown (ms) after an input-triggered action finishes.
-const DEFAULT_COOLDOWN_MS: u64 = 30_000;
-
-/// Input-action settings: enable flags + cooldown. Shared source of truth
-/// between the settings and main windows (their localStorage is isolated).
-#[derive(Debug, Clone, Copy, Serialize)]
-struct InputActionSettings {
-    /// Whether keyboard input can trigger random actions.
-    keyboard_enabled: bool,
-    /// Whether clicking the pet can trigger random actions.
-    click_enabled: bool,
-    /// Cooldown (ms) after an action finishes before keyboard can trigger again.
-    cooldown_ms: u64,
-}
-
-impl Default for InputActionSettings {
-    fn default() -> Self {
-        Self {
-            keyboard_enabled: true,
-            click_enabled: true,
-            cooldown_ms: DEFAULT_COOLDOWN_MS,
-        }
-    }
-}
-
-/// Input-action runtime state: settings + cooldown bookkeeping.
-struct InputActionState {
-    settings: Mutex<InputActionSettings>,
-    /// Instant (ms since some epoch) when the current cooldown expires.
-    /// `None` means no cooldown is active (ready to trigger).
-    cooldown_until: Mutex<Option<std::time::Instant>>,
-}
-
-/// Screen-space rectangle the pet occupies, used for dynamic click-through
-/// (absolute screen pixels).
-#[derive(Debug, Clone, Copy)]
-struct HitArea {
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-}
-
-impl HitArea {
-    fn contains(&self, px: i32, py: i32) -> bool {
-        px >= self.x && px <= self.x + self.w && py >= self.y && py <= self.y + self.h
-    }
-}
-
-/// Shared app state. Everything is behind `Mutex` so IPC commands and the
-/// input thread can mutate it.
-struct AppState {
-    behavior: Mutex<BehaviorEngine>,
-    tools: Mutex<ToolRegistry>,
-    /// RNG for weighted-random selection. Seeded from entropy so behavior is
-    /// non-deterministic at runtime.
-    rng: Mutex<ChaCha8Rng>,
-    /// Kept alive so the rdev thread isn't dropped (it is detached).
-    _input_listener: Mutex<Option<InputListener>>,
-    /// Screen-space hit area registered by the frontend. The window is
-    /// interactive when the cursor is inside it, click-through outside.
-    hit_area: Mutex<Option<HitArea>>,
-    /// Last click-through state applied; the platform API is only called on
-    /// transitions (rdev MouseMove fires very frequently).
-    click_through: Mutex<bool>,
-    /// The currently active model.
-    current_model: Mutex<Option<ModelInfo>>,
-    /// The pet's physical window size (px), set from the settings window.
-    /// Shared as the single source of truth between the two webviews.
-    pet_size: Mutex<(u32, u32)>,
-    /// Input-action state: enable flags, cooldown, and cooldown bookkeeping.
-    input_action: InputActionState,
-}
-
-/// Default physical pet size.
-const DEFAULT_PET_SIZE: (u32, u32) = (400, 400);
-
-/// Resolve the `assets/` directory. In dev it lives at the repo root (three
-/// levels above src-tauri); in prod it is the bundled resource dir.
-fn resolve_assets_dir(app: &tauri::AppHandle) -> PathBuf {
-    let dev_assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../assets");
-    if dev_assets.exists() {
-        return dev_assets;
-    }
-    app.path().resource_dir().unwrap_or_else(|_| PathBuf::from("assets"))
-}
-
-/// Decide whether an input event (`PetTap` / `KeyDown`) should trigger a
-/// random action, based on enable flags, cooldown, and (for keyboard) a low
-/// per-press probability. Returns the gate decision.
-///
-/// - Click: always triggers when enabled; never blocked by cooldown, but
-///   *resets* the cooldown timer (so it counts toward the shared cooldown).
-/// - Keyboard: triggers only when enabled, not in cooldown, and the low
-///   probability roll passes.
-fn gate_input_action(
-    state: &AppState,
-    kind: EventKind,
-    rng: &mut impl rand::Rng,
-) -> Option<&'static str> {
-    let settings = *state.input_action.settings.lock().unwrap();
-    match kind {
-        EventKind::PetTap if settings.click_enabled => Some("click"),
-        EventKind::KeyDown if settings.keyboard_enabled => {
-            // Block while cooldown is active.
-            let until = state.input_action.cooldown_until.lock().unwrap();
-            if let Some(t) = *until {
-                if std::time::Instant::now() < t {
-                    return None;
-                }
-            }
-            drop(until);
-            // Low per-press probability gate.
-            if rng.gen::<f64>() < KEYBOARD_TRIGGER_PROBABILITY {
-                Some("keyboard")
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Start the cooldown timer after an input-triggered action finishes.
-fn start_cooldown(state: &AppState) {
-    let ms = state.input_action.settings.lock().unwrap().cooldown_ms;
-    *state.input_action.cooldown_until.lock().unwrap() =
-        Some(std::time::Instant::now() + std::time::Duration::from_millis(ms));
-}
-
-/// Reset (clear) the cooldown timer — used when a click triggers so it does
-/// not inherit a leftover cooldown, and the click itself begins a fresh one
-/// only after its action finishes (via `hm://action-done`).
-fn reset_cooldown(state: &AppState) {
-    *state.input_action.cooldown_until.lock().unwrap() = None;
-}
-
-/// Dispatch a behavior event end-to-end: match rules, roll probability,
-/// weighted-select subscriptions, then route each action by category.
-///
-/// Single sink for every event source (rdev global input, the frontend
-/// `dispatch_event` IPC, timers). Locks are held only for each read; tool
-/// execution is awaited *after* the registry lock is released.
-async fn dispatch(app: tauri::AppHandle, kind: EventKind) {
-    // Input-action gate: click/keyboard may trigger a random action directly,
-    // bypassing the rule engine (the action content is chosen in the frontend
-    // from the model's motions/expressions). A triggered action emits a
-    // `hm://trigger-input-action` event; the frontend plays it and notifies
-    // back via `hm://action-done` to start the cooldown.
-    {
-        let state = app.state::<AppState>();
-        let mut rng = state.rng.lock().unwrap();
-        if let Some(source) = gate_input_action(&state, kind, &mut *rng) {
-            // Click always fires and resets the cooldown; the cooldown is
-            // (re)started when the frontend reports the action finished.
-            if source == "click" {
-                reset_cooldown(&state);
-            }
-            let _ = app.emit(
-                EVENT_TRIGGER_INPUT_ACTION,
-                serde_json::json!({ "source": source }),
-            );
-            return;
-        }
-    }
-
-    let actions: Vec<Action> = {
-        let state = app.state::<AppState>();
-        let engine = state.behavior.lock().unwrap();
-        let mut rng = state.rng.lock().unwrap();
-        engine.dispatch(kind, &mut *rng)
-    };
-    tracing::debug!(event = ?kind, matched = actions.len(), "dispatch");
-
-    for action in actions {
-        match action {
-            Action::Model(_) | Action::Speak(_) => {
-                if let Err(e) = app.emit(EVENT_ACTION, action) {
-                    tracing::warn!(error = %e, "emit action failed");
-                }
-            }
-            Action::Tool(tool_action) => {
-                // Clone the Arc and release the registry lock before awaiting.
-                let tool: Option<Arc<dyn Tool>> = app
-                    .state::<AppState>()
-                    .tools
-                    .lock()
-                    .unwrap()
-                    .get(&tool_action.name);
-                match tool {
-                    Some(t) => {
-                        if let Err(e) = t.execute(tool_action.args).await {
-                            tracing::warn!(error = %e, tool = %tool_action.name, "tool execute failed");
-                        }
-                    }
-                    None => tracing::warn!(tool = %tool_action.name, "tool not found"),
-                }
-            }
-        }
-    }
-}
-
-/// Update click-through from the global cursor position vs the hit area.
-/// Only calls the platform API on transitions to avoid spamming it on every move.
-fn update_click_through(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32) {
-    let state = app.state::<AppState>();
-    let hit = state.hit_area.lock().unwrap();
-    let want_passthrough = match *hit {
-        Some(area) => !area.contains(cursor_x, cursor_y),
-        None => true, // no hit area registered yet -> stay click-through
-    };
-    drop(hit);
-
-    let mut current = state.click_through.lock().unwrap();
-    if *current == want_passthrough {
-        return; // no transition
-    }
-    *current = want_passthrough;
-    drop(current);
-
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_ignore_cursor_events(want_passthrough);
-    }
-}
-
-/// Emit the cursor position relative to the main window so the frontend can
-/// drive gaze following (eyes track the pointer anywhere on screen).
-/// Window-relative pixels (top-left = 0,0), matching Live2D's `focus(x, y)`.
-fn emit_cursor(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32) {
-    let Some(window) = app.get_webview_window("main") else { return };
-    let Ok(win_pos) = window.outer_position() else { return };
-    let rel_x = cursor_x - win_pos.x;
-    let rel_y = cursor_y - win_pos.y;
-    let _ = app.emit("hm://cursor", serde_json::json!({ "x": rel_x, "y": rel_y }));
-}
-
-#[tauri::command]
-fn register_rule(state: tauri::State<AppState>, rule: Rule) -> Result<(), String> {
-    state.behavior.lock().unwrap().register(rule).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn unregister_rule(state: tauri::State<AppState>, name: String) -> Result<(), String> {
-    state
-        .behavior
-        .lock()
-        .unwrap()
-        .unregister(&name)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn matched_rules(state: tauri::State<AppState>, kind: EventKind) -> Vec<String> {
-    state
-        .behavior
-        .lock()
-        .unwrap()
-        .matched(kind)
-        .into_iter()
-        .map(|r| r.name.clone())
-        .collect()
-}
-
-#[tauri::command]
-fn subscribe(state: tauri::State<AppState>, subscription: Subscription) -> Result<(), String> {
-    state.behavior.lock().unwrap().bus_mut().subscribe(subscription).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn unsubscribe(state: tauri::State<AppState>, id: String) -> Result<(), String> {
-    state.behavior.lock().unwrap().bus_mut().unsubscribe(&id).map(|_| ()).map_err(|e| e.to_string())
-}
-
-/// Frontend-originated event (e.g. canvas pointertap -> PetTap). Feeds into
-/// the same dispatch sink as global input.
-#[tauri::command]
-async fn dispatch_event(app: tauri::AppHandle, kind: EventKind) -> Result<(), String> {
-    dispatch(app, kind).await;
-    Ok(())
-}
-
-#[tauri::command]
-fn list_tools(state: tauri::State<AppState>) -> Vec<ToolInfo> {
-    state.tools.lock().unwrap().list()
-}
-
-#[tauri::command]
-async fn invoke_tool(
-    state: tauri::State<'_, AppState>,
-    name: String,
-    args: serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    let tool = state
-        .tools
-        .lock()
-        .unwrap()
-        .get(&name)
-        .ok_or_else(|| format!("tool not found: {name}"))?;
-    tool.execute(args).await.map_err(|e| e.to_string())
-}
-
-/// Move the window to an absolute top-left position (physical pixels).
-/// `x`/`y` are the desired top-left, computed in the renderer from the cursor
-/// minus the grab offset — absolute, so drags can't drift from increments.
-#[tauri::command]
-fn move_window(window: tauri::WebviewWindow, x: i32, y: i32) -> Result<(), String> {
-    window
-        .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
-        .map_err(|e| e.to_string())
-}
-
-/// Get the current pet physical size. Returns the default on first run.
-#[tauri::command]
-fn get_pet_size(state: tauri::State<AppState>) -> (u32, u32) {
-    *state.pet_size.lock().unwrap()
-}
-
-/// Set the pet's physical size, persist it, and broadcast it so the main
-/// window re-applies it immediately. The size lives here (not in webview
-/// localStorage) because the settings and main windows have isolated storage.
-#[tauri::command]
-fn set_pet_size(app: tauri::AppHandle, state: tauri::State<AppState>, w: u32, h: u32) -> Result<(), String> {
-    let clamped = (w.clamp(100, 2000), h.clamp(100, 2000));
-    *state.pet_size.lock().unwrap() = clamped;
-    let _ = app.emit(EVENT_SIZE_CHANGED, clamped);
-    Ok(())
-}
-
-/// Resize the window to a physical size. Keeps the pet's on-screen size
-/// stable across DPI / display changes (window sized in physical px, renderer
-/// layout in matching CSS px).
-#[tauri::command]
-fn resize_window_physical(window: tauri::WebviewWindow, w: u32, h: u32) -> Result<(), String> {
-    window
-        .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: w, height: h }))
-        .map_err(|e| e.to_string())
-}
-
-/// Get the input-action settings (enable flags + cooldown).
-#[tauri::command]
-fn get_input_action_settings(state: tauri::State<AppState>) -> InputActionSettings {
-    *state.input_action.settings.lock().unwrap()
-}
-
-/// Set the input-action settings and broadcast so the main window can react.
-#[tauri::command]
-fn set_input_action_settings(
-    app: tauri::AppHandle,
-    state: tauri::State<AppState>,
-    keyboard_enabled: bool,
-    click_enabled: bool,
-    cooldown_ms: u64,
-) -> Result<(), String> {
-    let s = InputActionSettings {
-        keyboard_enabled,
-        click_enabled,
-        cooldown_ms: cooldown_ms.clamp(0, 600_000),
-    };
-    *state.input_action.settings.lock().unwrap() = s;
-    let _ = app.emit(EVENT_INPUT_SETTINGS_CHANGED, s);
-    Ok(())
-}
-
-/// Called by the frontend when an input-triggered action finishes playing,
-/// so the backend starts the shared cooldown timer. (Click actions also
-/// reach here, so they (re)start the cooldown as specified.)
-#[tauri::command]
-fn notify_action_done(state: tauri::State<AppState>) -> Result<(), String> {
-    start_cooldown(&state);
-    Ok(())
-}
-
-#[tauri::command]
-fn set_ignore_mouse_events(window: tauri::WebviewWindow, ignore: bool) -> Result<(), String> {
-    window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
-}
-
-/// Register the pet's screen-space hit area for dynamic click-through.
-/// Called by the frontend after the model is laid out (and on move/resize).
-#[tauri::command]
-fn register_hit_area(state: tauri::State<AppState>, x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
-    *state.hit_area.lock().unwrap() = Some(HitArea { x, y, w, h });
-    Ok(())
-}
-
-/// List all bundled Live2D models discovered under assets/models/.
-#[tauri::command]
-fn list_models(app: tauri::AppHandle) -> Result<Vec<ModelInfo>, String> {
-    Ok(models::list_models(&resolve_assets_dir(&app)))
-}
-
-#[tauri::command]
-fn get_current_model(state: tauri::State<AppState>) -> Result<ModelInfo, String> {
-    state
-        .current_model
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| "no model selected".to_string())
-}
-
-/// Switch the active model. Emits `hm://model-changed` so the main window
-/// reloads the model.
-#[tauri::command]
-fn switch_model(app: tauri::AppHandle, state: tauri::State<AppState>, id: String) -> Result<ModelInfo, String> {
-    let model = models::list_models(&resolve_assets_dir(&app))
-        .into_iter()
-        .find(|m| m.id == id)
-        .ok_or_else(|| format!("model not found: {id}"))?;
-    *state.current_model.lock().unwrap() = Some(model.clone());
-    tracing::info!(model = %model.id, "switch_model");
-    let _ = app.emit(EVENT_MODEL_CHANGED, &model);
-    Ok(model)
-}
-
-/// Open the settings window (or focus it if already open). It is a normal,
-/// framed, non-always-on-top window, independent of the transparent pet window.
-///
-/// Instead of hiding the pet window instantly (which looks abrupt), emit
-/// `hm://panel-opening` so the frontend can fade the model out first, then
-/// call `hide_main_window` to actually hide it. On close, show the window then
-/// emit `hm://panel-closing` so the frontend fades the model back in.
-#[tauri::command]
-fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("settings") {
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-    let settings = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
-        .title("HandheldMaid Settings")
-        .inner_size(480.0, 600.0)
-        .decorations(true)
-        .always_on_top(false)
-        .resizable(true)
-        .transparent(false)
-        .skip_taskbar(false)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    // Force click-through while the panel is open so rdev MouseMove doesn't
-    // re-enable interaction. Don't hide yet — let the frontend fade out first,
-    // then call `hide_main_window`.
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_ignore_cursor_events(true);
-        let state = app.state::<AppState>();
-        *state.click_through.lock().unwrap() = true;
-        let _ = app.emit(EVENT_PANEL_OPENING, ());
-    }
-    let app_handle = app.clone();
-    settings.on_window_event(move |event| {
-        if let tauri::WindowEvent::Destroyed = event {
-            if let Some(main) = app_handle.get_webview_window("main") {
-                let _ = main.show();
-                let _ = main.set_ignore_cursor_events(true);
-                // Reset so the next mouse move re-evaluates the hit area.
-                let state = app_handle.state::<AppState>();
-                *state.click_through.lock().unwrap() = true;
-                let _ = app_handle.emit(EVENT_PANEL_CLOSING, ());
-            }
-        }
-    });
-
-    Ok(())
-}
-
-/// Hide the main pet window. Called by the frontend after it finishes fading
-/// the model out (triggered by `hm://panel-opening`), so the disappear is
-/// smooth rather than an instant hide.
-#[tauri::command]
-fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.hide();
-    }
-    Ok(())
-}
-
-/// Show a native context menu near the cursor (Open Settings / Quit).
-#[tauri::command]
-fn show_context_menu(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-
-    let window = app.get_webview_window("main").ok_or("main window not found")?;
-    let open = MenuItem::with_id(&app, "open_settings", "Open Settings", true, None::<&str>).map_err(|e| e.to_string())?;
-    let quit = MenuItem::with_id(&app, "quit", "Quit", true, None::<&str>).map_err(|e| e.to_string())?;
-    let sep = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
-    let menu = Menu::with_items(&app, &[&open, &sep, &quit]).map_err(|e| e.to_string())?;
-    window.popup_menu(&menu).map_err(|e| e.to_string())
-}
-
-fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
-    match event.id().as_ref() {
-        "open_settings" => {
-            let _ = open_settings(app.clone());
-        }
-        "quit" => {
-            app.exit(0);
-        }
-        _ => {}
-    }
-}
+use hm_core::automation::Automation;
+use hm_core::tools::archive::ArchiveTool;
+use hm_core::tools::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_NAME};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    let state = AppState {
-        behavior: Mutex::new(BehaviorEngine::new()),
-        tools: Mutex::new(ToolRegistry::new()),
-        rng: Mutex::new(ChaCha8Rng::from_entropy()),
-        _input_listener: Mutex::new(None),
-        hit_area: Mutex::new(None),
-        click_through: Mutex::new(true),
-        current_model: Mutex::new(None),
-        pet_size: Mutex::new(DEFAULT_PET_SIZE),
-        input_action: InputActionState {
-            settings: Mutex::new(InputActionSettings::default()),
-            cooldown_until: Mutex::new(None),
-        },
-    };
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(state)
-        .invoke_handler(tauri::generate_handler![
-            register_rule,
-            unregister_rule,
-            matched_rules,
-            subscribe,
-            unsubscribe,
-            dispatch_event,
-            list_tools,
-            invoke_tool,
-            move_window,
-            resize_window_physical,
-            get_pet_size,
-            set_pet_size,
-            get_input_action_settings,
-            set_input_action_settings,
-            notify_action_done,
-            hide_main_window,
-            set_ignore_mouse_events,
-            register_hit_area,
-            list_models,
-            get_current_model,
-            switch_model,
-            open_settings,
-            show_context_menu,
-        ])
+        .manage(AppState::new())
+        .invoke_handler(crate::generate_handler!())
         .setup(|app| {
             let window = app.get_webview_window("main").expect("main window missing");
             // Start click-through so the pet floats over the desktop by default.
             let _ = window.set_ignore_cursor_events(true);
-            // Apply the persisted pet size (defaults to 400x400) on launch.
+            // Apply the persisted pet size (defaults to 400x400) on launch. The
+            // window is taller than the pet: the extra top slice is the speech
+            // bubble area (sized to the model's scanned transparent-top space;
+            // defaults to ~20% before the first scan — see window-size.ts).
             let (pw, ph) = *app.state::<AppState>().pet_size.lock().unwrap();
-            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: pw, height: ph }));
+            let win_h = ph + ((ph as f32 * 0.2).round() as u32);
+            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: pw, height: win_h }));
 
             // Resolve the initial model (prefer "miku", else the first discovered).
             let initial = {
@@ -618,51 +69,24 @@ pub fn run() {
             }
             *app.state::<AppState>().current_model.lock().unwrap() = initial;
 
-            // Register the built-in system_control tool.
-            let automation = Arc::new(Mutex::new(Automation::new()));
-            app.state::<AppState>()
-                .tools
-                .lock()
-                .unwrap()
-                .register(Arc::new(SystemControlTool::new(automation)));
-            tracing::info!(tool = SYSTEM_CONTROL_NAME, "registered tool");
+            // Register the built-in tools.
+            {
+                let state = app.state::<AppState>();
+                let mut tools = state.tools.lock().unwrap();
+                let automation = Arc::new(Mutex::new(Automation::new()));
+                tools.register(Arc::new(SystemControlTool::new(automation)));
+                tracing::info!(tool = SYSTEM_CONTROL_NAME, "registered tool");
+                tools.register(Arc::new(ArchiveTool::new()));
+                tracing::info!(tool = hm_core::tools::archive::NAME, "registered tool");
+            }
 
             // Wire global input (rdev) -> behavior dispatch + dynamic click-through
             // + gaze following. rdev is a global hook, so it keeps firing even
             // while the window is click-through.
-            let app_handle = app.handle().clone();
-            let last_cursor_emit = Arc::new(Mutex::new(std::time::Instant::now()));
-            let callback: InputCallback = Arc::new(move |ev: InputEvent| {
-                let handle = app_handle.clone();
-                match ev.kind {
-                    hm_core::input::InputKind::MouseMove => {
-                        // Dynamic click-through (cheap, runs every move).
-                        update_click_through(&handle, ev.x, ev.y);
-                        // Gaze following: throttled to ~30fps to avoid flooding IPC.
-                        let now = std::time::Instant::now();
-                        let should_emit = {
-                            let mut last = last_cursor_emit.lock().unwrap();
-                            if now.duration_since(*last) >= std::time::Duration::from_millis(33) {
-                                *last = now;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        if should_emit {
-                            emit_cursor(&handle, ev.x, ev.y);
-                        }
-                    }
-                    _ => {
-                        let kind = EventKind::from(ev.kind);
-                        tauri::async_runtime::spawn(dispatch(handle, kind));
-                    }
-                }
-            });
-            let listener = InputListener::new(callback);
-            listener.start();
+            let listener = start_input_listener(app.handle().clone());
             *app.state::<AppState>()._input_listener.lock().unwrap() = Some(listener);
 
+            // Handle context-menu item clicks (Open Settings / Quit).
             let menu_handle = app.handle().clone();
             app.on_menu_event(move |_app, event| {
                 handle_menu_event(&menu_handle, event);

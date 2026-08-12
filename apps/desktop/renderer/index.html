@@ -4,25 +4,12 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>HandheldMaid</title>
-		<style>
-			html,
-			body {
-				margin: 0;
-				padding: 0;
-				width: 100%;
-				height: 100%;
-				overflow: hidden;
-				background: transparent;
-			}
-			canvas {
-				display: block;
-				width: 100%;
-				height: 100%;
-			}
-		</style>
+		<link rel="stylesheet" href="/src/styles/main.css" />
 	</head>
 	<body>
-		<canvas id="canvas"></canvas>
+		<div id="stage">
+			<canvas id="canvas"></canvas>
+		</div>
 		<!-- Live2D Cubism Core: must load as a classic script before the app so
 		     the global `Live2DCubismCore` is available to pixi-live2d-display. -->
 		<script src="/live2dcubismcore.min.js"></script>

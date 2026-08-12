@@ -105,11 +105,15 @@ export const IPC = {
 	INVOKE_TOOL: 'invoke_tool',
 	MOVE_WINDOW: 'move_window',
 	RESIZE_WINDOW_PHYSICAL: 'resize_window_physical',
+	RESIZE_WINDOW_KEEP_BOTTOM: 'resize_window_keep_bottom',
 	GET_PET_SIZE: 'get_pet_size',
 	SET_PET_SIZE: 'set_pet_size',
 	GET_INPUT_ACTION_SETTINGS: 'get_input_action_settings',
 	SET_INPUT_ACTION_SETTINGS: 'set_input_action_settings',
 	NOTIFY_ACTION_DONE: 'notify_action_done',
+	GET_ARCHIVE_SETTINGS: 'get_archive_settings',
+	SET_ARCHIVE_SETTINGS: 'set_archive_settings',
+	HANDLE_DROP: 'handle_drop',
 	HIDE_MAIN_WINDOW: 'hide_main_window',
 	SET_IGNORE_MOUSE_EVENTS: 'set_ignore_mouse_events',
 	REGISTER_HIT_AREA: 'register_hit_area',
@@ -138,6 +142,23 @@ export const EVENT = {
 	PANEL_OPENING: 'hm://panel-opening',
 	/** Tells the main window to fade in after the settings panel closes. */
 	PANEL_CLOSING: 'hm://panel-closing',
+	/** Carries archive settings when they change (settings -> main window). */
+	ARCHIVE_SETTINGS_CHANGED: 'hm://archive-settings-changed',
+	/** Carries the result of a drag-drop archive operation (backend -> main). */
+	ARCHIVE_RESULT: 'hm://archive-result',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
+
+/** Archive (drag-drop compress/extract) settings. Mirrors the Rust struct. */
+export interface ArchiveSettings {
+	enabled: boolean;
+}
+
+/** Result payload of a drag-drop archive operation. */
+export interface ArchiveResult {
+	ok: boolean;
+	action?: 'compress' | 'extract';
+	error?: string;
+	result?: { ok?: boolean; action?: string; output?: string };
+}

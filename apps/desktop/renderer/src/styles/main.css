@@ -1,0 +1,93 @@
+@import './cirrus-tokens.css';
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: transparent;
+}
+
+/* The stage is the fixed-size pet window: canvas (pet+bubble area) + the toast
+   overlay. It's the positioning context for the toast so the toast aligns to
+   the canvas (the pet), not to the browser viewport — which differs from the
+   desktop window and would misplace the toast in a plain browser tab. On
+   desktop the window is sized to match, so the stage fills it. */
+#stage {
+	position: relative;
+	/* Sized by applyWindowSize (targetSize + bubble area, CSS px). */
+	width: var(--stage-w, 400px);
+	height: var(--stage-h, 456px);
+	overflow: visible;
+}
+
+canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+/* Speech-bubble toast above the pet. The window is taller than the pet (extra
+   space on top), so the bubble floats in that space without overlapping. */
+.toast {
+	/* Positioned within #stage (not the viewport) so the bubble aligns to the
+	   pet canvas regardless of the browser/desktop window-size difference. */
+	position: absolute;
+	/* Anchored by its *bottom* to just above the model (the model stays put).
+	   When the bubble wraps to more lines it grows *upward*; the window's top
+	   edge moves up to make room (applyWindowSize raises the window top when
+	   the bubble area grows), so a taller bubble is never clipped and never
+	   pushes the model. */
+	bottom: var(--bubble-bottom, 44px);
+	/* Centered between 10% left and 10% right gaps; width shrinks to content. */
+	left: 10%;
+	right: 10%;
+	margin: 0 auto;
+	width: fit-content;
+	max-width: 100%;
+	padding: 8px 14px;
+	border-radius: var(--radius-card);
+	/* Semi-transparent so it reads as a floating bubble, not an occluder. */
+	background: rgba(255, 255, 255, 0.94);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border: 1px solid var(--color-edge);
+	box-shadow: var(--shadow-rest);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	line-height: 1.4;
+	opacity: 0;
+	transform: translateY(10px);
+	transition:
+		opacity var(--t-state) var(--ease),
+		transform var(--t-state) var(--ease);
+	pointer-events: none;
+	z-index: 100;
+	/* Allow wrapping so long text wraps within the bubble instead of clipping. */
+	white-space: normal;
+	word-break: break-word;
+}
+.toast--visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+/* Bubble tail: positioned at 80% from the left (20% from the right edge),
+   pointing down at the pet. */
+.toast::after {
+	content: '';
+	position: absolute;
+	bottom: -5px;
+	left: 80%;
+	transform: translateX(-50%) rotate(45deg);
+	width: 9px;
+	height: 9px;
+	background: rgba(255, 255, 255, 0.94);
+	border-right: 1px solid var(--color-edge);
+	border-bottom: 1px solid var(--color-edge);
+}
