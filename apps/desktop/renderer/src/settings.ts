@@ -17,12 +17,12 @@ function renderShell() {
 		<main class="settings">
 			<h1 class="settings__title">HandheldMaid</h1>
 			<p class="settings__subtitle">Settings</p>
+			<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 			<section class="section" id="model-section">
 				<label class="section__label">Model</label>
 				<p class="section__desc">Choose the Live2D model shown on the desktop.</p>
 				<div class="opt-group" id="model-list"></div>
-				<p class="status" id="model-status"></p>
 			</section>
 
 			<section class="section">
@@ -38,7 +38,6 @@ function renderShell() {
 					</div>
 					<span class="slider__value" id="size-value">400px</span>
 				</div>
-				<p class="status" id="size-status"></p>
 			</section>
 
 			<section class="section">
@@ -68,7 +67,6 @@ function renderShell() {
 					</div>
 					<span class="slider__value" id="cooldown-value">30s</span>
 				</div>
-				<p class="status" id="input-status"></p>
 			</section>
 
 			<section class="section">
@@ -81,7 +79,6 @@ function renderShell() {
 						<span class="toggle__track"><span class="toggle__thumb"></span></span>
 					</label>
 				</div>
-				<p class="status" id="ai-status"></p>
 			</section>
 
 			<section class="section about-section">
@@ -112,6 +109,22 @@ function renderShell() {
 }
 
 /** Sync a custom slider's fill/thumb position from its native range input. */
+/** Toast kinds: neutral info, success, or error. */
+type ToastKind = 'info' | 'ok' | 'error';
+let toastTimer: number | undefined;
+
+/** Show a transient toast above the settings cards. Auto-dismisses after 2.5s. */
+function showToast(message: string, kind: ToastKind = 'info') {
+	const toast = document.getElementById('toast');
+	if (!toast) return;
+	toast.textContent = message;
+	toast.className = `toast toast--${kind} toast--visible`;
+	if (toastTimer !== undefined) window.clearTimeout(toastTimer);
+	toastTimer = window.setTimeout(() => {
+		toast.classList.remove('toast--visible');
+	}, 2500);
+}
+
 function syncSliderPct(wrap: HTMLElement, input: HTMLInputElement) {
 	const min = Number(input.min);
 	const max = Number(input.max);
@@ -141,7 +154,6 @@ function wireSlider(
 
 async function renderModels() {
 	const list = document.getElementById('model-list')!;
-	const status = document.getElementById('model-status')!;
 	list.innerHTML = '<p class="opt__id">Loading…</p>';
 
 	let models: ModelInfo[] = [];
@@ -176,14 +188,12 @@ async function renderModels() {
 	list.querySelectorAll<HTMLInputElement>('input[name="model"]').forEach((input) => {
 		input.addEventListener('change', async () => {
 			if (!input.checked) return;
-			status.textContent = 'Switching…';
-			status.classList.remove('status--ok');
+			showToast('Switching model…');
 			try {
 				await invoke<ModelInfo>(IPC.SWITCH_MODEL, { id: input.value });
-				status.textContent = `Switched to ${input.value}`;
-				status.classList.add('status--ok');
+				showToast(`Switched to ${input.value}`, 'ok');
 			} catch (e) {
-				status.textContent = `Failed: ${e}`;
+				showToast(`Failed: ${e}`, 'error');
 			}
 		});
 	});
@@ -191,7 +201,6 @@ async function renderModels() {
 
 async function wireSize() {
 	const value = document.getElementById('size-value')!;
-	const status = document.getElementById('size-status')!;
 	const input = document.getElementById('size-slider') as HTMLInputElement | null;
 	if (!input) return;
 
@@ -211,14 +220,12 @@ async function wireSize() {
 			value.textContent = `${v}px`;
 		},
 		async (v) => {
-			status.textContent = 'Applying…';
-			status.classList.remove('status--ok');
+			showToast('Applying size…');
 			try {
 				await invoke(IPC.SET_PET_SIZE, { w: v, h: v });
-				status.textContent = `Set to ${v}px`;
-				status.classList.add('status--ok');
+				showToast(`Size set to ${v}px`, 'ok');
 			} catch (e) {
-				status.textContent = `Failed: ${e}`;
+				showToast(`Failed: ${e}`, 'error');
 			}
 		},
 	);
@@ -228,7 +235,6 @@ async function wireInputActions() {
 	const clickToggle = document.getElementById('click-toggle') as HTMLInputElement | null;
 	const keyboardToggle = document.getElementById('keyboard-toggle') as HTMLInputElement | null;
 	const cooldownValue = document.getElementById('cooldown-value')!;
-	const status = document.getElementById('input-status')!;
 	const cooldownInput = document.getElementById('cooldown-slider') as HTMLInputElement | null;
 	if (!clickToggle || !keyboardToggle || !cooldownInput) return;
 
@@ -245,18 +251,16 @@ async function wireInputActions() {
 	cooldownValue.textContent = `${cooldownInput.value}s`;
 
 	const apply = async () => {
-		status.textContent = 'Applying…';
-		status.classList.remove('status--ok');
+		showToast('Applying…');
 		try {
 			await invoke(IPC.SET_INPUT_ACTION_SETTINGS, {
 				keyboard_enabled: keyboardToggle.checked,
 				click_enabled: clickToggle.checked,
 				cooldown_ms: Number(cooldownInput.value) * 1000,
 			});
-			status.textContent = 'Saved';
-			status.classList.add('status--ok');
+			showToast('Saved', 'ok');
 		} catch (e) {
-			status.textContent = `Failed: ${e}`;
+			showToast(`Failed: ${e}`, 'error');
 		}
 	};
 
@@ -274,10 +278,9 @@ async function wireInputActions() {
 
 function wireAiToggle() {
 	const toggle = document.getElementById('ai-toggle') as HTMLInputElement | null;
-	const status = document.getElementById('ai-status')!;
 	if (!toggle) return;
 	toggle.addEventListener('change', () => {
-		status.textContent = toggle.checked ? 'AI mode is coming soon — setting saved.' : 'AI mode disabled.';
+		showToast(toggle.checked ? 'AI mode is coming soon — setting saved.' : 'AI mode disabled.');
 		// Reflect the not-yet-implemented state by unchecking after feedback.
 		if (toggle.checked) {
 			window.setTimeout(() => {

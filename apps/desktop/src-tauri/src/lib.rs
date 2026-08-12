@@ -1,6 +1,7 @@
 //! Tauri 2 desktop shell for HandheldMaid.
 //!
-//! Thin: window lifecycle, IPC commands, and wiring the platform input hooks
+//! Thin: window lifecycle, IPC commands, and wiring the platform input
+//! hooks
 //! from `hm-core`. All real logic lives in the core crate so it can be reused
 //! by future frontends (mobile, CLI).
 //!
@@ -36,6 +37,12 @@ const EVENT_INPUT_SETTINGS_CHANGED: &str = "hm://input-settings-changed";
 /// Tauri event emitted when an input action should fire (backend -> main).
 /// The frontend picks a random motion/expression from the model and plays it.
 const EVENT_TRIGGER_INPUT_ACTION: &str = "hm://trigger-input-action";
+/// Tauri event emitted before the settings panel opens: the main window fades
+/// out, then asks the backend to hide it (so the disappear isn't abrupt).
+const EVENT_PANEL_OPENING: &str = "hm://panel-opening";
+/// Tauri event emitted after the settings panel closes and the main window is
+/// shown again: the main window fades back in.
+const EVENT_PANEL_CLOSING: &str = "hm://panel-closing";
 
 /// Per-keyboard-press trigger probability for input-triggered actions.
 const KEYBOARD_TRIGGER_PROBABILITY: f64 = 0.01;
@@ -457,6 +464,11 @@ fn switch_model(app: tauri::AppHandle, state: tauri::State<AppState>, id: String
 
 /// Open the settings window (or focus it if already open). It is a normal,
 /// framed, non-always-on-top window, independent of the transparent pet window.
+///
+/// Instead of hiding the pet window instantly (which looks abrupt), emit
+/// `hm://panel-opening` so the frontend can fade the model out first, then
+/// call `hide_main_window` to actually hide it. On close, show the window then
+/// emit `hm://panel-closing` so the frontend fades the model back in.
 #[tauri::command]
 fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
@@ -474,13 +486,14 @@ fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Hide the pet window while settings is open and force click-through so
-    // rdev MouseMove doesn't re-enable it.
+    // Force click-through while the panel is open so rdev MouseMove doesn't
+    // re-enable interaction. Don't hide yet — let the frontend fade out first,
+    // then call `hide_main_window`.
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_ignore_cursor_events(true);
-        let _ = main.hide();
         let state = app.state::<AppState>();
         *state.click_through.lock().unwrap() = true;
+        let _ = app.emit(EVENT_PANEL_OPENING, ());
     }
     let app_handle = app.clone();
     settings.on_window_event(move |event| {
@@ -491,10 +504,22 @@ fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
                 // Reset so the next mouse move re-evaluates the hit area.
                 let state = app_handle.state::<AppState>();
                 *state.click_through.lock().unwrap() = true;
+                let _ = app_handle.emit(EVENT_PANEL_CLOSING, ());
             }
         }
     });
 
+    Ok(())
+}
+
+/// Hide the main pet window. Called by the frontend after it finishes fading
+/// the model out (triggered by `hm://panel-opening`), so the disappear is
+/// smooth rather than an instant hide.
+#[tauri::command]
+fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.hide();
+    }
     Ok(())
 }
 
@@ -561,6 +586,7 @@ pub fn run() {
             get_input_action_settings,
             set_input_action_settings,
             notify_action_done,
+            hide_main_window,
             set_ignore_mouse_events,
             register_hit_area,
             list_models,

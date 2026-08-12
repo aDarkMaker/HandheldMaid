@@ -110,6 +110,7 @@ export const IPC = {
 	GET_INPUT_ACTION_SETTINGS: 'get_input_action_settings',
 	SET_INPUT_ACTION_SETTINGS: 'set_input_action_settings',
 	NOTIFY_ACTION_DONE: 'notify_action_done',
+	HIDE_MAIN_WINDOW: 'hide_main_window',
 	SET_IGNORE_MOUSE_EVENTS: 'set_ignore_mouse_events',
 	REGISTER_HIT_AREA: 'register_hit_area',
 	LIST_MODELS: 'list_models',
@@ -133,6 +134,10 @@ export const EVENT = {
 	INPUT_SETTINGS_CHANGED: 'hm://input-settings-changed',
 	/** Carries `{ source }` telling the frontend to play a random action. */
 	TRIGGER_INPUT_ACTION: 'hm://trigger-input-action',
+	/** Tells the main window to fade out before the settings panel opens. */
+	PANEL_OPENING: 'hm://panel-opening',
+	/** Tells the main window to fade in after the settings panel closes. */
+	PANEL_CLOSING: 'hm://panel-closing',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
