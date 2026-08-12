@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 import { invoke } from '@tauri-apps/api/core';
-import { IPC, type InputActionSettings, type ModelInfo } from '@handheld-maid/shared';
-import './settings.css';
+import { IPC, type ArchiveSettings, type InputActionSettings, type ModelInfo } from '@handheld-maid/shared';
+import './styles/settings.css';
 
 /**
  * Settings window entry. Independent of the main pet window — no Pixi/Live2D
@@ -14,10 +14,10 @@ const root = document.getElementById('app')!;
 
 function renderShell() {
 	root.innerHTML = `
+		<div class="toast" id="toast" role="status" aria-live="polite"></div>
 		<main class="settings">
 			<h1 class="settings__title">HandheldMaid</h1>
 			<p class="settings__subtitle">Settings</p>
-			<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 			<section class="section" id="model-section">
 				<label class="section__label">Model</label>
@@ -66,6 +66,18 @@ function renderShell() {
 						<span class="slider__thumb"></span>
 					</div>
 					<span class="slider__value" id="cooldown-value">30s</span>
+				</div>
+			</section>
+
+			<section class="section">
+				<label class="section__label">Drag &amp; Drop</label>
+				<p class="section__desc">Drop a folder to compress it, or an archive to extract it. Output is placed next to the source.</p>
+				<div class="toggle-row">
+					<span class="opt__name">Enable drag-drop archive</span>
+					<label class="toggle">
+						<input type="checkbox" id="archive-toggle" />
+						<span class="toggle__track"><span class="toggle__thumb"></span></span>
+					</label>
 				</div>
 			</section>
 
@@ -276,6 +288,26 @@ async function wireInputActions() {
 	);
 }
 
+async function wireArchive() {
+	const toggle = document.getElementById('archive-toggle') as HTMLInputElement | null;
+	if (!toggle) return;
+	try {
+		const s = await invoke<ArchiveSettings>(IPC.GET_ARCHIVE_SETTINGS);
+		toggle.checked = s.enabled;
+	} catch {
+		toggle.checked = true;
+	}
+	toggle.addEventListener('change', async () => {
+		showToast('Applying…');
+		try {
+			await invoke(IPC.SET_ARCHIVE_SETTINGS, { enabled: toggle.checked });
+			showToast(toggle.checked ? 'Drag-drop archive enabled' : 'Drag-drop archive disabled', 'ok');
+		} catch (e) {
+			showToast(`Failed: ${e}`, 'error');
+		}
+	});
+}
+
 function wireAiToggle() {
 	const toggle = document.getElementById('ai-toggle') as HTMLInputElement | null;
 	if (!toggle) return;
@@ -294,4 +326,5 @@ renderShell();
 void renderModels();
 void wireSize();
 void wireInputActions();
+void wireArchive();
 wireAiToggle();
