@@ -99,6 +99,39 @@ function layoutModel(model: Live2DModel, app: Application) {
 	model.y = app.renderer.height / 2;
 }
 
+/** Fade duration (ms) for the pet appear/disappear transition. */
+const FADE_MS = 200;
+
+/**
+ * Animate the canvas CSS opacity from its current value to `to` over `FADE_MS`.
+ * Uses the canvas element's `opacity` rather than `app.stage.alpha` because
+ * pixi-live2d-display's `_render` draws the model via its own GL path and
+ * bypasses Pixi's alpha, so stage/model alpha has no effect on Live2D output.
+ */
+function fadeCanvas(canvas: HTMLCanvasElement, to: number): Promise<void> {
+	return new Promise((resolve) => {
+		const from = parseFloat(canvas.style.opacity || '1');
+		if (Math.abs(from - to) < 0.001) {
+			canvas.style.opacity = String(to);
+			resolve();
+			return;
+		}
+		const start = performance.now();
+		const tick = () => {
+			const t = Math.min(1, (performance.now() - start) / FADE_MS);
+			// ease-out-expo, matching the Cirrus motion curve.
+			const eased = t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+			canvas.style.opacity = String(from + (to - from) * eased);
+			if (t >= 1) {
+				resolve();
+			} else {
+				requestAnimationFrame(tick);
+			}
+		};
+		requestAnimationFrame(tick);
+	});
+}
+
 /**
  * Register the model's screen-space bounding box with the backend so it can
  * drive dynamic click-through (interactive when the cursor is over the pet,
@@ -307,6 +340,26 @@ async function init() {
 		await listen<{ x: number; y: number }>('hm://cursor', (e) => {
 			focusModel(e.payload.x, e.payload.y);
 		}).catch((e) => console.error('[HandheldMaid] cursor listener error:', e));
+	}
+
+	// Panel open/close: fade the model out before hiding the window (when the
+	// settings panel opens) and fade it back in after the window reappears
+	// (when the panel closes), so the appear/disappear isn't abrupt.
+	if (isTauri) {
+		await listen(EVENT.PANEL_OPENING, async () => {
+			try {
+				await fadeCanvas(canvas, 0);
+				void invoke(IPC.HIDE_MAIN_WINDOW).catch(() => {});
+			} catch {
+				/* fall back to hiding immediately */
+				void invoke(IPC.HIDE_MAIN_WINDOW).catch(() => {});
+			}
+		}).catch((e) => console.error('[HandheldMaid] panel-opening listener error:', e));
+		await listen(EVENT.PANEL_CLOSING, () => {
+			// Reset opacity to 0 before fading in (the window was hidden at 0).
+			canvas.style.opacity = '0';
+			void fadeCanvas(canvas, 1).catch(() => {});
+		}).catch((e) => console.error('[HandheldMaid] panel-closing listener error:', e));
 	}
 
 	// Idle timer: every 30s, feed an Interval event to the engine.
