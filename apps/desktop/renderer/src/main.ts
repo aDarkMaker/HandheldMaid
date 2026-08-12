@@ -156,7 +156,7 @@ window.addEventListener('contextmenu', (e) => e.preventDefault());
  * overwrites our 0 before draw). No-op for models without watermark parts.
  */
 async function suppressWatermark(_app: Application, model: Live2DModel) {
-	const partIds = await watermarkPartIds();
+	const partIds = await watermarkPartIds(model);
 	if (partIds.length === 0) return;
 
 	const internal = (
@@ -175,35 +175,41 @@ async function suppressWatermark(_app: Application, model: Live2DModel) {
 	});
 }
 
-/** Fetch the model3.json -> cdi3.json, return ids of Parts named 水印/watermark. */
-async function watermarkPartIds(): Promise<string[]> {
+/** Cache of model3.json URL -> watermark part ids, to avoid re-fetching on switch. */
+const watermarkCache = new Map<string, string[]>();
+
+/**
+ * Discover watermark part ids for the model. Fetches the model3.json ->
+ * cdi3.json, returns ids of Parts named 水印/watermark. Results are cached per
+ * model URL so repeated model switches don't re-fetch.
+ */
+async function watermarkPartIds(_model: Live2DModel): Promise<string[]> {
+	const cached = watermarkCache.get(currentModelUrl);
+	if (cached) return cached;
+
 	const base = currentModelUrl.substring(0, currentModelUrl.lastIndexOf('/') + 1);
 	try {
 		const res = await fetch(currentModelUrl);
-		const json = (await res.json()) as {
-			FileReferences?: { DisplayInfo?: string };
-		};
+		const json = (await res.json()) as { FileReferences?: { DisplayInfo?: string } };
 		const cdi = json.FileReferences?.DisplayInfo;
 		if (!cdi) return [];
 		const cr = await fetch(base + cdi);
 		const cj = (await cr.json()) as { Parts?: Array<{ Id: string; Name: string }> };
-		return (cj.Parts ?? []).filter((p) => /水印|watermark/i.test(p.Name)).map((p) => p.Id);
+		const ids = (cj.Parts ?? []).filter((p) => /水印|watermark/i.test(p.Name)).map((p) => p.Id);
+		watermarkCache.set(currentModelUrl, ids);
+		return ids;
 	} catch (e) {
 		console.error('[HandheldMaid] watermark discovery failed:', e);
 		return [];
 	}
 }
 
-/** Register the default behavior: pet-tap -> Tap motion, idle timer -> Idle motion. */
+/**
+ * Register the default idle behavior. Pet-tap is handled by the input-action
+ * system (random motion/expression via `hm://trigger-input-action`), so only
+ * the idle timer rule is registered here.
+ */
 async function registerDefaultBehavior() {
-	// Pet tap emits "on_pet" -> play the Tap motion.
-	const petRule: Rule = { name: 'pet', event: 'pettap', probability: 1, emit_event: 'on_pet' };
-	const petSub: Subscription = {
-		id: 'pet_tap',
-		event: 'on_pet',
-		action: { category: 'model', motion: 'Tap' },
-		weight: 1,
-	};
 	// Idle tick (every 30s, 30% chance) emits "on_idle" -> play an Idle motion.
 	const idleRule: Rule = { name: 'idle', event: 'interval', probability: 0.3, emit_event: 'on_idle' };
 	const idleSub: Subscription = {
@@ -213,8 +219,6 @@ async function registerDefaultBehavior() {
 		weight: 1,
 	};
 
-	await safeInvoke(IPC.REGISTER_RULE, { rule: petRule }).catch((e) => console.error('[HandheldMaid] register pet rule:', e));
-	await safeInvoke(IPC.SUBSCRIBE, { subscription: petSub }).catch((e) => console.error('[HandheldMaid] subscribe pet:', e));
 	await safeInvoke(IPC.REGISTER_RULE, { rule: idleRule }).catch((e) => console.error('[HandheldMaid] register idle rule:', e));
 	await safeInvoke(IPC.SUBSCRIBE, { subscription: idleSub }).catch((e) => console.error('[HandheldMaid] subscribe idle:', e));
 }
@@ -251,13 +255,23 @@ async function init() {
 	}
 
 	// Reload the model when the backend signals a model switch (settings window).
+	// Load the new model BEFORE destroying the old one so there's no empty-frame
+	// flicker while assets re-fetch and decode. The old model's teardown is
+	// deferred to the next frame so its GL/GC work doesn't block the new model's
+	// first render.
 	if (isTauri) {
 		await listen<ModelInfo>(EVENT.MODEL_CHANGED, async () => {
 			try {
-				app.stage.removeChild(model);
-				model.destroy({ children: true, texture: true, baseTexture: true });
+				const oldModel = model;
+				// Mount the new model (adds to stage, lays out, wires events).
 				model = await mountModel(app);
 				updateHitArea(model);
+				// Tear down the previous model after the new one has rendered a
+				// frame, so the swap feels instant.
+				window.setTimeout(() => {
+					app.stage.removeChild(oldModel);
+					oldModel.destroy({ children: true, texture: true, baseTexture: true });
+				}, 0);
 			} catch (e) {
 				console.error('[HandheldMaid] model-changed error:', e);
 			}
