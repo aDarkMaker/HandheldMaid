@@ -5,13 +5,13 @@ import * as PIXI from 'pixi.js';
 import { bindModel, startActionListener } from './actions';
 import { IPC } from '@handheld-maid/shared';
 import { isTauri, safeInvoke, waitForCubismCore } from './lib/tauri';
-import { mountModel, scanVisibleExtent } from './lib/model';
+import { mountModel, scanVisibleExtent, refreshPixelMap } from './lib/model';
 import { setTargetSize } from './lib/window-size';
 import { registerDefaultBehavior } from './lib/behavior';
 import { wireDragToMove } from './lib/drag-move';
 import { positionBubble, wireDragDrop, onBubbleResize } from './lib/drag-drop';
-import { createDebugBubble, onDebugResize } from './lib/debug';
-import { createDebugLine } from './lib/debug-line';
+import { refreshDebugOverlay } from './lib/dev/debug-overlay';
+import { initDevMode } from './lib/dev/dev-mode';
 import { makeRelayout, wireEventListeners } from './lib/events';
 
 // Suppress the browser's default context menu so right-click only triggers our
@@ -19,11 +19,6 @@ import { makeRelayout, wireEventListeners } from './lib/events';
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 
 async function init() {
-	// DEBUG: persistent layout-diagnostic bubble — remove once layout is verified.
-	createDebugBubble();
-	// DEBUG: red line at the model's visible top — remove once layout is verified.
-	createDebugLine();
-
 	await waitForCubismCore();
 
 	window.PIXI = PIXI;
@@ -57,10 +52,12 @@ async function init() {
 	// Scan the model's visible extent (async, non-blocking) to size the bubble
 	// area to the model's actual transparent-top space. Cached per model URL, so
 	// this only runs on first load. After scanning, re-apply the (now
-	// model-specific) window size + relayout + bubble position.
+	// model-specific) window size + relayout + bubble position, then refresh the
+	// purple pixel map so it matches the model's *final* (post-relayout) position.
 	void scanVisibleExtent(model, app).then(async () => {
 		await makeRelayout(app, model)();
 		positionBubble(null);
+		await refreshPixelMap(app);
 	});
 
 	// Holder so the MODEL_CHANGED listener can swap the live model.
@@ -72,20 +69,29 @@ async function init() {
 		console.warn('[HandheldMaid] non-tauri context, skipping IPC listener');
 	}
 
-	// Keep the pet's physical size constant when the window, DPI scaling, or
-	// display changes: enforce the physical window size, resize the renderer to
-	// the matching CSS size, then re-layout, resync the click-through area, and
-	// reposition the bubble. Reads `modelRef.model` dynamically so it uses the
-	// current model after a switch. makeRelayout awaits the native resize so
-	// layout runs against the real canvas size.
+	// Relayout: enforce the physical window size, resize the renderer, re-layout
+	// the model, resync the hit area, reposition the bubble, and refresh the
+	// debug overlays + purple pixel map. `relayoutNow` (awaitable) is used by the
+	// Dev transition so it can wait for everything to settle before fading in;
+	// `relayout` (fire-and-forget) is used by resize/DPI-change listeners.
+	const relayoutNow = async () => {
+		await makeRelayout(app, modelRef.model)();
+		positionBubble(null);
+		refreshDebugOverlay();
+		await refreshPixelMap(app);
+	};
 	const relayout = () => {
-		void makeRelayout(app, modelRef.model)().then(() => positionBubble(null));
+		void relayoutNow();
 	};
 	window.addEventListener('resize', relayout);
 	// Fires when DPI scaling changes (e.g. moving the window onto a differently
 	// scaled display, or changing the system scale). Re-assert the physical size.
 	const matchDpr = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
 	matchDpr.addEventListener('change', relayout);
+
+	// Dev mode: debug overlays are off by default, toggled from the right-click
+	// menu. The toggle is a staged 4s fade that hides the window resize.
+	await initDevMode(relayoutNow);
 
 	// Register all backend-event listeners (model switch, size, gaze, panel fade).
 	await wireEventListeners(app, canvas, modelRef, relayout);
@@ -94,10 +100,6 @@ async function init() {
 	// rises to make room (model stays put, bottom-anchored). Registered before
 	// wireDragDrop creates the toast (and its ResizeObserver).
 	onBubbleResize(relayout);
-	// DEBUG: the debug bubble also drives bubble-area sizing so its multi-line
-	// text gets the same top-expansion (otherwise it'd be clipped). Remove with
-	// the debug bubble.
-	onDebugResize(relayout);
 
 	// Drag-drop archive (compress/extract) with a speech-bubble toast.
 	await wireDragDrop();

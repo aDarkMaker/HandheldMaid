@@ -20,11 +20,26 @@ function basename(p: string): string {
 
 /**
  * Callback invoked when the toast's rendered height changes (via
- * ResizeObserver). Set by main.ts to enlarge/shrink the window's *top area*
- * while the model stays bottom-anchored. Keeps the toast from ever overlapping
- * or clipping against the model regardless of how many lines it wraps to.
+ * ResizeObserver), so the window's top area can grow/shrink while the model
+ * stays bottom-anchored.
  */
 let bubbleResizeCb: (() => void) | null = null;
+
+/** When true, toast-height changes are ignored (no relayout). Used during the
+ * pixel scan so the framebuffer is stable. */
+let bubbleResizePaused = false;
+
+/** Pause toast-height-driven relayouts (e.g. during the pixel scan). */
+export function pauseBubbleResize() {
+	bubbleResizePaused = true;
+}
+
+/** Resume toast-height-driven relayouts and fire one if the height changed
+ * while paused (so a missed change isn't dropped). */
+export function resumeBubbleResize() {
+	bubbleResizePaused = false;
+	bubbleResizeCb?.();
+}
 
 /** Register the relayout callback fired when the toast height changes. */
 export function onBubbleResize(cb: () => void) {
@@ -38,30 +53,27 @@ function createToast(): (message: string, persistent?: boolean) => void {
 	toast.setAttribute('role', 'status');
 	toast.setAttribute('aria-live', 'polite');
 	// Append to #stage (the toast's positioning context) so the bubble aligns
-	// to the pet canvas, not the browser viewport (which differs from the
-	// desktop window and would misplace the bubble in a plain browser tab).
+	// to the pet canvas, not the browser viewport.
 	(stage() ?? document.body).appendChild(toast);
 	let toastTimer: number | undefined;
 
-	// Watch the toast's rendered height. When it changes (e.g. text wraps to
-	// more/fewer lines), update the tracked bubble height and relayout so the
-	// model always sits just below the toast — the toast never overlaps or
-	// clips the model, no matter how tall it gets.
+	// Watch the toast's rendered height; when it changes, update the tracked
+	// bubble height and relayout so the toast never overlaps or clips the model.
 	const ro = new ResizeObserver(() => {
+		if (bubbleResizePaused) return;
 		if (setToastHeight('archive', toast.offsetHeight)) {
 			bubbleResizeCb?.();
 		}
 	});
 	ro.observe(toast);
-	// Seed the tracked height from the initial (empty) toast.
 	setToastHeight('archive', toast.offsetHeight);
 
 	return (message: string, persistent = false) => {
 		toast.textContent = message;
 		toast.classList.add('toast--visible');
 		if (toastTimer !== undefined) window.clearTimeout(toastTimer);
-		// Persistent toasts (e.g. "Processing…") stay until the next show() call
-		// replaces them; non-persistent auto-dismiss after 2.5s.
+		// Persistent toasts stay until the next show() replaces them; others
+		// auto-dismiss after 2.5s.
 		if (!persistent) {
 			toastTimer = window.setTimeout(() => toast.classList.remove('toast--visible'), 2500);
 		}
@@ -69,22 +81,21 @@ function createToast(): (message: string, persistent?: boolean) => void {
 }
 
 /**
- * Position the bubble by its *bottom*, anchored just above the model's top.
- * The model is bottom-anchored (stays put when the bubble grows); the bubble
- * grows upward and the window top rises to make room, so a taller bubble never
- * overlaps the model or gets clipped. `--bubble-bottom` is the distance from
- * the #stage bottom to the bubble's bottom = the model's height (targetSize.h)
- * + a small gap (the model top sits `targetSize.h` above the stage bottom).
- * Relative to #stage (not the viewport) so it aligns to the pet in both
- * browser and desktop. `topY` is ignored/kept for API compatibility.
+ * Position the bubble by its bottom, anchored just above the model's visible
+ * top (visTop). `layoutModel` publishes visTop via the `--vis-top-css` custom
+ * property (CSS px from the #stage top); read it here so this module doesn't
+ * need a live model reference. Falls back to targetSize.h before the first
+ * scan. `topY` is ignored (kept for API compatibility).
  */
 export function positionBubble(_topY: number | null) {
 	const dpr = window.devicePixelRatio || 1;
-	const gap = 4; // small gap between the bubble bottom and the model top
-	// Model top is targetSize.h above the stage bottom (bottom-anchored). The
-	// bubble bottom sits `gap` above it.
-	const bottom = Math.round(targetSize.h / dpr) + gap;
-	document.documentElement.style.setProperty('--bubble-bottom', `${bottom}px`);
+	const gap = 4;
+	const stageH = (stage()?.offsetHeight ?? window.innerHeight);
+	const root = document.documentElement;
+	const published = getComputedStyle(root).getPropertyValue('--vis-top-css').trim();
+	const visTopCss = published ? parseFloat(published) : stageH - targetSize.h / dpr;
+	const bottom = Math.max(0, Math.round(stageH - visTopCss + gap));
+	root.style.setProperty('--bubble-bottom', `${bottom}px`);
 }
 
 /**
@@ -97,8 +108,8 @@ export async function wireDragDrop() {
 	if (!isTauri) return;
 	const showToast = createToast();
 
-	// Show the result of a drag-drop archive operation as a toast. Keep the
-	// text short — the pet window is small, so only the basename is shown.
+	// Show the result of a drag-drop archive operation as a toast. Keep the text
+	// short — the pet window is small, so only the basename is shown.
 	await listen<ArchiveResult>(EVENT.ARCHIVE_RESULT, (e) => {
 		const r = e.payload;
 		if (r.ok) {
@@ -119,7 +130,7 @@ export async function wireDragDrop() {
 		const paths = event.payload.paths;
 		if (!paths || paths.length === 0) return;
 		// Only the first dropped item is handled. Show "Processing…" persistently
-		// so it stays until the result event replaces it (no 2.5s auto-dismiss gap).
+		// so it stays until the result event replaces it.
 		showToast('Processing…', true);
 		void invoke(IPC.HANDLE_DROP, { path: paths[0] }).catch((err) => showToast(`Failed: ${err}`));
 	});

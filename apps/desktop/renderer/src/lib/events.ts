@@ -6,7 +6,7 @@ import type { ModelInfo } from '@handheld-maid/shared';
 import { EVENT, IPC } from '@handheld-maid/shared';
 import { focusModel } from '../actions';
 import { isTauri } from './tauri';
-import { mountModel, updateHitArea, layoutModel, currentModelUrl, scanVisibleExtent } from './model';
+import { mountModel, updateHitArea, layoutModel, currentModelUrl, scanVisibleExtent, refreshPixelMap } from './model';
 import { applyWindowSize, fadeCanvas, setTargetSize } from './window-size';
 
 /**
@@ -26,38 +26,34 @@ export async function wireEventListeners(
 ) {
 	if (!isTauri) return;
 
-	// Reload the model when the backend signals a model switch (settings window).
-	// Load the new model BEFORE destroying the old one so there's no empty-frame
-	// flicker while assets re-fetch and decode. The old model's teardown is
-	// deferred to the next frame so its GL/GC work doesn't block the new model's
-	// first render.
-	await listen<ModelInfo>(EVENT.MODEL_CHANGED, async () => {
-		try {
-			const oldModel = modelRef.model;
-			// Mount the new model (adds to stage, lays out, wires events).
-			modelRef.model = await mountModel(app);
-			// Re-apply the window size + relayout so the new model lays out
-			// against the correct (pet+bubble) canvas.
-			await makeRelayout(app, modelRef.model)();
-			updateHitArea(modelRef.model);
-			// Scan the new model's visible extent (async, non-blocking). The
-			// scan is cached per model URL, so this only runs on first load of
-			// each model. It waits for the model to render, then reads pixels to
-			// find the true visible top → the bubble-area size for this model.
-			// After scanning, re-apply the window size (the bubble area may
-			// change from the default to the model-specific value) + relayout.
-			void scanVisibleExtent(modelRef.model, app).then(async () => {
+	// Model switches are serialized via a promise chain. `listen` fires the
+	// async callback without awaiting it, so two rapid MODEL_CHANGED events
+	// would run concurrently — both capturing the same old model and destroying
+	// it twice, leaving the first new model on stage alongside the second.
+	// Serializing also keeps each scan's framebuffer read from interleaving with
+	// another switch's mount/teardown.
+	let switchChain: Promise<void> = Promise.resolve();
+
+	await listen<ModelInfo>(EVENT.MODEL_CHANGED, () => {
+		switchChain = switchChain
+			.then(async () => {
+				const oldModel = modelRef.model;
+				// Hide the old model so the scan reads only the new one; it's
+				// torn down after the scan to avoid an empty-frame flicker.
+				oldModel.visible = false;
+				modelRef.model = await mountModel(app);
 				await makeRelayout(app, modelRef.model)();
 				updateHitArea(modelRef.model);
-			});
-			// Tear down the previous model after the new one has rendered a frame.
-			window.setTimeout(() => {
+				// Scan (cached per URL), then relayout + refresh the purple map
+				// at the model's final position.
+				await scanVisibleExtent(modelRef.model, app);
+				await makeRelayout(app, modelRef.model)();
+				updateHitArea(modelRef.model);
+				await refreshPixelMap(app);
 				app.stage.removeChild(oldModel);
 				oldModel.destroy({ children: true, texture: true, baseTexture: true });
-			}, 0);
-		} catch (e) {
-			console.error('[HandheldMaid] model-changed error:', e);
-		}
+			})
+			.catch((e) => console.error('[HandheldMaid] model-changed error:', e));
 	}).catch((e) => console.error('[HandheldMaid] model-changed listener error:', e));
 
 	// Resize the pet when the size is changed in the settings window.
