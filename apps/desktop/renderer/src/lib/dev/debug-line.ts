@@ -1,17 +1,18 @@
 /**
  * DEBUG: a red horizontal line marking the model's *visible top* (the scan-
  * derived visTop), so we can see exactly where the layout thinks the model
- * starts. Reveals whether the "空白" (gap above the model) is because visTop is
- * too high (the scan picked up transparent canvas) or the model is positioned
- * too low.
- *
- * Remove this module (and its call sites) once the layout is verified.
+ * starts (shown only in Dev mode).
  */
+import { ensureDevContainer } from './dev-container';
 
 let lineEl: HTMLDivElement | null = null;
 
-/** Create the red debug line (once), appended to #stage so it aligns to the
- * pet canvas like the toast. */
+/** Destroy the red debug line (remove from DOM, drop the ref). */
+export function destroyDebugLine() {
+	if (lineEl) { lineEl.remove(); lineEl = null; }
+}
+
+/** Create the red debug line (once), appended to the dev container. */
 export function createDebugLine() {
 	if (lineEl) return;
 	lineEl = document.createElement('div');
@@ -24,7 +25,7 @@ export function createDebugLine() {
 	lineEl.style.zIndex = '200';
 	lineEl.style.pointerEvents = 'none';
 	lineEl.style.top = '-9999px'; // off-screen until positioned
-	(document.getElementById('stage') ?? document.body).appendChild(lineEl);
+	ensureDevContainer().appendChild(lineEl);
 }
 
 /**
