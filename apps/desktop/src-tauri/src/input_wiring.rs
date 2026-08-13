@@ -14,9 +14,25 @@ use tauri::{Emitter, Manager};
 pub fn update_click_through(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32) {
     let state = app.state::<AppState>();
     let hit = state.hit_area.lock().unwrap();
-    let want_passthrough = match *hit {
-        Some(area) => !area.contains(cursor_x, cursor_y),
-        None => true, // no hit area registered yet -> stay click-through
+    let (want_passthrough, hit_desc) = match *hit {
+        Some(area) => {
+            let inside = area.contains(cursor_x, cursor_y);
+            tracing::debug!(
+                cursor_x,
+                cursor_y,
+                hit_x = area.x,
+                hit_y = area.y,
+                hit_w = area.w,
+                hit_h = area.h,
+                inside,
+                "update_click_through",
+            );
+            (!inside, format!("area={:?} inside={}", area, inside))
+        }
+        None => {
+            tracing::debug!(cursor_x, cursor_y, "update_click_through: no hit area -> passthrough");
+            (true, "none".to_string())
+        }
     };
     drop(hit);
 
@@ -24,6 +40,14 @@ pub fn update_click_through(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32
     if *current == want_passthrough {
         return; // no transition
     }
+    tracing::info!(
+        from = *current,
+        to = want_passthrough,
+        cursor_x,
+        cursor_y,
+        hit = %hit_desc,
+        "click-through transition",
+    );
     *current = want_passthrough;
     drop(current);
 
