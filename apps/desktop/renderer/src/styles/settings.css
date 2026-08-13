@@ -82,6 +82,41 @@ html {
 }
 
 /* ── Option card radio group (20px radius) ──────────────────────────────── */
+
+/* Dropzone: dashed option-card surface for importing models via drag-drop. */
+.dropzone {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 16px;
+	margin-bottom: 14px;
+	border: 1.5px dashed var(--color-edge);
+	border-radius: var(--radius-card);
+	background: var(--color-cloud);
+	color: var(--color-mist);
+	font-size: 12.5px;
+	cursor: pointer;
+	transition:
+		border-color var(--t-state) var(--ease),
+		background var(--t-state) var(--ease),
+		color var(--t-state) var(--ease);
+}
+.dropzone__icon {
+	font-size: 16px;
+	line-height: 1;
+}
+.dropzone:hover,
+.dropzone--active {
+	border-color: var(--color-ink);
+	background: var(--color-fill);
+	color: var(--color-ink);
+}
+.dropzone:focus-visible {
+	outline: none;
+	box-shadow: var(--ring);
+}
+
 .opt-group {
 	display: flex;
 	flex-direction: column;
@@ -93,12 +128,11 @@ html {
 	position: relative;
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 8px;
 	padding: 14px 16px;
 	background: var(--color-cloud);
 	border: 1px solid var(--color-edge);
 	border-radius: var(--radius-card); /* 20px — option card */
-	cursor: pointer;
 	transition:
 		border-color var(--t-state) var(--ease),
 		box-shadow var(--t-state) var(--ease),
@@ -106,6 +140,15 @@ html {
 }
 .opt:hover {
 	border-color: var(--color-ink-hover);
+}
+/* The clickable label fills the card and selects the radio. */
+.opt__main {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex: 1;
+	min-width: 0;
+	cursor: pointer;
 }
 
 /* Visually hide the native radio, preserve keyboard access. */
@@ -139,15 +182,88 @@ html {
 .opt__text {
 	display: flex;
 	flex-direction: column;
+	min-width: 0;
 }
 .opt__name {
 	font-weight: 500;
 	font-size: 14px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.opt__meta {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 .opt__id {
 	color: var(--color-mist);
 	font-size: 11px;
 	font-variant-numeric: tabular-nums;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* Small "imported" badge (citrus text, no fill surface). */
+.opt__badge {
+	color: var(--color-citrus);
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	white-space: nowrap;
+}
+
+/* Inline rename input — fills the name slot. */
+.opt__rename {
+	flex: 1;
+	min-width: 0;
+	padding: 2px 6px;
+	border: 1px solid var(--color-ink);
+	border-radius: var(--radius-sm);
+	background: var(--color-cloud);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	font-weight: 500;
+}
+
+/* Action buttons (rename / delete) on the right of an option card. */
+.opt__acts {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+}
+.opt__act {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: var(--radius-pill);
+	background: transparent;
+	color: var(--color-mist);
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+	transition:
+		color var(--t-state) var(--ease),
+		background var(--t-state) var(--ease),
+		border-color var(--t-state) var(--ease);
+}
+.opt__act:hover {
+	color: var(--color-ink);
+	background: var(--color-fill);
+	border-color: var(--color-fill-border);
+}
+.opt__act:focus-visible {
+	outline: none;
+	box-shadow: var(--ring);
+}
+.opt__act--danger:hover {
+	color: var(--color-citrus);
 }
 
 /* ── Toggle switch ──────────────────────────────────────────────────────── */
