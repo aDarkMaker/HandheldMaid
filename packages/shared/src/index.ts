@@ -70,10 +70,18 @@ export interface ToolInfo {
 export interface ModelInfo {
 	/** Stable id = model directory name (e.g. "wanko", "miku"). */
 	id: string;
-	/** Display name (model3.json filename stem). */
+	/** Display name (model3.json filename stem, or a custom name set via rename). */
 	name: string;
 	/** Path relative to assets/ (e.g. "models/wanko/runtime/wanko_touch.model3.json"). */
 	path: string;
+	/** `true` if imported via drag-drop (user can delete it). */
+	imported: boolean;
+}
+
+/** Result of importing one model from a drop. Mirrors the Rust `ImportedModel`. */
+export interface ImportedModel extends ModelInfo {
+	/** "new" (archived) | "same" (already present, identical) | "dup" (id taken, suffixed). */
+	status: 'new' | 'same' | 'dup';
 }
 
 /** A behavior event emitted to the frontend. */
@@ -122,6 +130,9 @@ export const IPC = {
 	LIST_MODELS: 'list_models',
 	GET_CURRENT_MODEL: 'get_current_model',
 	SWITCH_MODEL: 'switch_model',
+	IMPORT_MODEL: 'import_model',
+	RENAME_MODEL: 'rename_model',
+	DELETE_MODEL: 'delete_model',
 	OPEN_SETTINGS: 'open_settings',
 	SHOW_CONTEXT_MENU: 'show_context_menu',
 } as const;
@@ -150,6 +161,8 @@ export const EVENT = {
 	ARCHIVE_RESULT: 'hm://archive-result',
 	/** Carries `bool` when Dev (debug overlay) mode is toggled via the right-click menu. */
 	DEV_MODE_TOGGLED: 'hm://dev-mode-toggled',
+	/** Carries `ImportedModel[]` results of a drag-drop model import. */
+	MODEL_IMPORTED: 'hm://model-imported',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];
