@@ -6,8 +6,8 @@
 //! same-named subfolder next to the archive (extract). Existing outputs are
 //! rejected rather than overwritten.
 
-use hm_core::tool::{Tool, ToolError};
 use async_trait::async_trait;
+use hm_core::tool::{Tool, ToolError};
 use serde_json::{json, Value};
 use std::fs;
 use std::io;
@@ -102,12 +102,24 @@ impl Tool for ArchiveTool {
 /// default (`.tar.gz` on macOS, `.zip` elsewhere).
 fn compress(src: &Path) -> Result<PathBuf, ToolError> {
     if !src.is_dir() {
-        return Err(ToolError::InvalidArgs(format!("not a folder: {}", src.display())));
+        return Err(ToolError::InvalidArgs(format!(
+            "not a folder: {}",
+            src.display()
+        )));
     }
-    let name = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let out = src.parent().unwrap_or_else(|| Path::new(".")).join(format!("{name}{}", platform_ext()));
+    let name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let out = src
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{name}{}", platform_ext()));
     if out.exists() {
-        return Err(ToolError::Execution(format!("output exists: {}", out.display())));
+        return Err(ToolError::Execution(format!(
+            "output exists: {}",
+            out.display()
+        )));
     }
 
     if cfg!(target_os = "macos") {
@@ -122,16 +134,28 @@ fn compress(src: &Path) -> Result<PathBuf, ToolError> {
 /// from the extension (`.zip`, `.tar.gz`, `.tgz`).
 fn extract(archive: &Path) -> Result<PathBuf, ToolError> {
     if !archive.is_file() {
-        return Err(ToolError::InvalidArgs(format!("not a file: {}", archive.display())));
+        return Err(ToolError::InvalidArgs(format!(
+            "not a file: {}",
+            archive.display()
+        )));
     }
     let stem = archive_stem(archive);
-    let out = archive.parent().unwrap_or_else(|| Path::new(".")).join(&stem);
+    let out = archive
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&stem);
     if out.exists() {
-        return Err(ToolError::Execution(format!("output exists: {}", out.display())));
+        return Err(ToolError::Execution(format!(
+            "output exists: {}",
+            out.display()
+        )));
     }
     fs::create_dir_all(&out).map_err(|e| ToolError::Execution(format!("create dir: {e}")))?;
 
-    let name = archive.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let name = archive
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     if name.ends_with(".zip") {
         extract_zip(archive, &out)?;
     } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
@@ -139,14 +163,46 @@ fn extract(archive: &Path) -> Result<PathBuf, ToolError> {
     } else {
         // Clean up the empty folder we just made.
         let _ = fs::remove_dir(&out);
-        return Err(ToolError::InvalidArgs(format!("unsupported archive: {}", archive.display())));
+        return Err(ToolError::InvalidArgs(format!(
+            "unsupported archive: {}",
+            archive.display()
+        )));
     }
     Ok(out)
 }
 
+/// Extract any supported archive (`.zip` / `.tar.gz` / `.tgz`) into `out_dir`,
+/// which must already exist. Format is detected from the extension. Reuses the
+/// private extractors (which guard against zip-slip / tar-slip).
+pub fn extract_archive(archive: &Path, out_dir: &Path) -> Result<(), ToolError> {
+    if !archive.is_file() {
+        return Err(ToolError::InvalidArgs(format!(
+            "not a file: {}",
+            archive.display()
+        )));
+    }
+    let name = archive
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if name.ends_with(".zip") {
+        extract_zip(archive, out_dir)
+    } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        extract_tar_gz(archive, out_dir)
+    } else {
+        Err(ToolError::InvalidArgs(format!(
+            "unsupported archive: {}",
+            archive.display()
+        )))
+    }
+}
+
 /// The archive's base name without a `.zip` / `.tar.gz` / `.tgz` extension.
 fn archive_stem(path: &Path) -> String {
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     for ext in [".tar.gz", ".tgz", ".zip"] {
         if name.to_lowercase().ends_with(ext) {
             return name[..name.len() - ext.len()].to_string();
@@ -158,12 +214,14 @@ fn archive_stem(path: &Path) -> String {
 // ── zip ─────────────────────────────────────────────────────────────────────
 
 fn compress_zip(src: &Path, out: &Path) -> Result<(), ToolError> {
-    let file = fs::File::create(out).map_err(|e| ToolError::Execution(format!("create file: {e}")))?;
+    let file =
+        fs::File::create(out).map_err(|e| ToolError::Execution(format!("create file: {e}")))?;
     let mut writer = zip::ZipWriter::new(file);
     let opts = zip::write::SimpleFileOptions::default();
 
     let mut entries: Vec<PathBuf> = Vec::new();
-    collect_entries(src, src, &mut entries).map_err(|e| ToolError::Execution(format!("walk: {e}")))?;
+    collect_entries(src, src, &mut entries)
+        .map_err(|e| ToolError::Execution(format!("walk: {e}")))?;
     for entry in &entries {
         // Store paths relative to the source (no top-level folder name), so
         // extracting into a same-named subfolder reproduces the original layout
@@ -171,36 +229,55 @@ fn compress_zip(src: &Path, out: &Path) -> Result<(), ToolError> {
         let rel = entry.strip_prefix(src).unwrap_or(entry);
         let zip_name = rel.to_string_lossy().replace('\\', "/");
         if entry.is_dir() {
-            writer.add_directory(format!("{zip_name}/"), opts).map_err(|e| ToolError::Execution(format!("zip dir: {e}")))?;
+            writer
+                .add_directory(format!("{zip_name}/"), opts)
+                .map_err(|e| ToolError::Execution(format!("zip dir: {e}")))?;
         } else {
-            writer.start_file(zip_name, opts).map_err(|e| ToolError::Execution(format!("zip file: {e}")))?;
-            let mut f = fs::File::open(entry).map_err(|e| ToolError::Execution(format!("open: {e}")))?;
-            io::copy(&mut f, &mut writer).map_err(|e| ToolError::Execution(format!("write: {e}")))?;
+            writer
+                .start_file(zip_name, opts)
+                .map_err(|e| ToolError::Execution(format!("zip file: {e}")))?;
+            let mut f =
+                fs::File::open(entry).map_err(|e| ToolError::Execution(format!("open: {e}")))?;
+            io::copy(&mut f, &mut writer)
+                .map_err(|e| ToolError::Execution(format!("write: {e}")))?;
         }
     }
-    writer.finish().map_err(|e| ToolError::Execution(format!("finish zip: {e}")))?;
+    writer
+        .finish()
+        .map_err(|e| ToolError::Execution(format!("finish zip: {e}")))?;
     Ok(())
 }
 
 fn extract_zip(archive: &Path, out: &Path) -> Result<(), ToolError> {
     let file = fs::File::open(archive).map_err(|e| ToolError::Execution(format!("open: {e}")))?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| ToolError::Execution(format!("read zip: {e}")))?;
+    let mut zip =
+        zip::ZipArchive::new(file).map_err(|e| ToolError::Execution(format!("read zip: {e}")))?;
     for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| ToolError::Execution(format!("zip entry: {e}")))?;
-        let name = entry.enclosed_name().ok_or_else(|| ToolError::Execution("unsafe zip entry name".into()))?;
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| ToolError::Execution(format!("zip entry: {e}")))?;
+        let name = entry
+            .enclosed_name()
+            .ok_or_else(|| ToolError::Execution("unsafe zip entry name".into()))?;
         let target = out.join(&name);
         // Ensure the resolved path stays inside `out` (no zip-slip).
         if !target.starts_with(out) {
-            return Err(ToolError::Execution(format!("zip entry escapes output dir: {}", name.display())));
+            return Err(ToolError::Execution(format!(
+                "zip entry escapes output dir: {}",
+                name.display()
+            )));
         }
         if entry.is_dir() {
             fs::create_dir_all(&target).map_err(|e| ToolError::Execution(format!("mkdir: {e}")))?;
         } else {
             if let Some(parent) = target.parent() {
-                fs::create_dir_all(parent).map_err(|e| ToolError::Execution(format!("mkdir: {e}")))?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| ToolError::Execution(format!("mkdir: {e}")))?;
             }
-            let mut f = fs::File::create(&target).map_err(|e| ToolError::Execution(format!("create: {e}")))?;
-            io::copy(&mut entry, &mut f).map_err(|e| ToolError::Execution(format!("write: {e}")))?;
+            let mut f = fs::File::create(&target)
+                .map_err(|e| ToolError::Execution(format!("create: {e}")))?;
+            io::copy(&mut entry, &mut f)
+                .map_err(|e| ToolError::Execution(format!("write: {e}")))?;
         }
     }
     Ok(())
@@ -209,18 +286,24 @@ fn extract_zip(archive: &Path, out: &Path) -> Result<(), ToolError> {
 // ── tar.gz ──────────────────────────────────────────────────────────────────
 
 fn compress_tar_gz(src: &Path, out: &Path) -> Result<(), ToolError> {
-    let file = fs::File::create(out).map_err(|e| ToolError::Execution(format!("create file: {e}")))?;
+    let file =
+        fs::File::create(out).map_err(|e| ToolError::Execution(format!("create file: {e}")))?;
     let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
     let mut builder = tar::Builder::new(gz);
 
     let mut entries: Vec<PathBuf> = Vec::new();
-    collect_entries(src, src, &mut entries).map_err(|e| ToolError::Execution(format!("walk: {e}")))?;
+    collect_entries(src, src, &mut entries)
+        .map_err(|e| ToolError::Execution(format!("walk: {e}")))?;
     for entry in &entries {
         // Store paths relative to the source (no top-level folder name).
         let rel = entry.strip_prefix(src).unwrap_or(entry);
-        builder.append_path_with_name(entry, rel).map_err(|e| ToolError::Execution(format!("tar append: {e}")))?;
+        builder
+            .append_path_with_name(entry, rel)
+            .map_err(|e| ToolError::Execution(format!("tar append: {e}")))?;
     }
-    builder.finish().map_err(|e| ToolError::Execution(format!("finish tar: {e}")))?;
+    builder
+        .finish()
+        .map_err(|e| ToolError::Execution(format!("finish tar: {e}")))?;
     Ok(())
 }
 
@@ -228,16 +311,26 @@ fn extract_tar_gz(archive: &Path, out: &Path) -> Result<(), ToolError> {
     let file = fs::File::open(archive).map_err(|e| ToolError::Execution(format!("open: {e}")))?;
     let gz = flate2::read::GzDecoder::new(file);
     let mut tar = tar::Archive::new(gz);
-    for entry in tar.entries().map_err(|e| ToolError::Execution(format!("read tar: {e}")))? {
+    for entry in tar
+        .entries()
+        .map_err(|e| ToolError::Execution(format!("read tar: {e}")))?
+    {
         let mut entry = entry.map_err(|e| ToolError::Execution(format!("tar entry: {e}")))?;
-        let name = entry.path().map_err(|e| ToolError::Execution(format!("tar path: {e}")))?;
+        let name = entry
+            .path()
+            .map_err(|e| ToolError::Execution(format!("tar path: {e}")))?;
         let name = name.into_owned();
         let target = out.join(&name);
         // Guard against path traversal (tar-slip).
         if !target.starts_with(out) {
-            return Err(ToolError::Execution(format!("tar entry escapes output dir: {}", name.display())));
+            return Err(ToolError::Execution(format!(
+                "tar entry escapes output dir: {}",
+                name.display()
+            )));
         }
-        entry.unpack(&target).map_err(|e| ToolError::Execution(format!("unpack: {e}")))?;
+        entry
+            .unpack(&target)
+            .map_err(|e| ToolError::Execution(format!("unpack: {e}")))?;
     }
     Ok(())
 }
@@ -264,7 +357,8 @@ mod tests {
     use std::fs;
 
     fn tmp(test_name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("hm-archive-{}-{}", std::process::id(), test_name));
+        let dir =
+            std::env::temp_dir().join(format!("hm-archive-{}-{}", std::process::id(), test_name));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -295,8 +389,14 @@ mod tests {
 
         let extracted = extract(&archive).unwrap();
         assert!(extracted.is_dir());
-        assert_eq!(fs::read_to_string(extracted.join("a.txt")).unwrap(), "hello");
-        assert_eq!(fs::read_to_string(extracted.join("sub").join("b.txt")).unwrap(), "world");
+        assert_eq!(
+            fs::read_to_string(extracted.join("a.txt")).unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            fs::read_to_string(extracted.join("sub").join("b.txt")).unwrap(),
+            "world"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }
