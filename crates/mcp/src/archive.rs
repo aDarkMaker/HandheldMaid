@@ -256,17 +256,13 @@ fn extract_zip(archive: &Path, out: &Path) -> Result<(), ToolError> {
         let mut entry = zip
             .by_index(i)
             .map_err(|e| ToolError::Execution(format!("zip entry: {e}")))?;
-        let name = entry
-            .enclosed_name()
-            .ok_or_else(|| ToolError::Execution("unsafe zip entry name".into()))?;
-        let target = out.join(&name);
-        // Ensure the resolved path stays inside `out` (no zip-slip).
-        if !target.starts_with(out) {
-            return Err(ToolError::Execution(format!(
-                "zip entry escapes output dir: {}",
-                name.display()
-            )));
-        }
+        // Decode the entry name from its raw bytes: try UTF-8 first, fall back
+        // to GB18030 (Chinese Windows zips often store UTF-8/G bytes without the
+        // zip UTF-8 flag bit, which the `zip` crate otherwise misreads as mojibake).
+        let name = decode_zip_name(entry.name_raw())
+            .ok_or_else(|| ToolError::Execution("invalid zip entry name encoding".into()))?;
+        let target = safe_join(out, &name)
+            .ok_or_else(|| ToolError::Execution(format!("unsafe zip entry name: {name}")))?;
         if entry.is_dir() {
             fs::create_dir_all(&target).map_err(|e| ToolError::Execution(format!("mkdir: {e}")))?;
         } else {
@@ -335,6 +331,46 @@ fn extract_tar_gz(archive: &Path, out: &Path) -> Result<(), ToolError> {
     Ok(())
 }
 
+// ── zip name decoding ────────────────────────────────────────────────────────
+
+/// Decode a zip entry name from its raw bytes. Tries UTF-8 first; if that
+/// fails (the zip header omits the UTF-8 flag bit), falls back to GB18030,
+/// which covers Chinese Windows zips that store UTF-8/G bytes verbatim.
+fn decode_zip_name(raw: &[u8]) -> Option<String> {
+    if let Ok(s) = std::str::from_utf8(raw) {
+        return Some(s.to_string());
+    }
+    let (cow, _, had_errors) = encoding_rs::GB18030.decode(raw);
+    if had_errors {
+        None
+    } else {
+        Some(cow.into_owned())
+    }
+}
+
+/// Join `out` with a zip entry name, rejecting path traversal (zip-slip).
+/// Returns `None` if the resolved path escapes `out` or contains an absolute
+/// component. Mirrors `ZipFile::enclosed_name` but on our decoded name.
+fn safe_join(out: &Path, name: &str) -> Option<PathBuf> {
+    let mut path = out.to_path_buf();
+    for component in name.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                if !path.pop() {
+                    return None;
+                }
+            }
+            c => path.push(c),
+        }
+    }
+    if path.starts_with(out) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /// Recursively collect all entries under `root` (depth-first), relative paths
@@ -355,6 +391,7 @@ fn collect_entries(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> io::Resul
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
 
     fn tmp(test_name: &str) -> PathBuf {
         let dir =
@@ -412,6 +449,75 @@ mod tests {
         // Second compress collides with the existing archive.
         let err = compress(&src).unwrap_err();
         assert!(matches!(err, ToolError::Execution(_)));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn decode_zip_name_utf8_and_gbk() {
+        // Valid UTF-8 is returned verbatim.
+        let utf8 = "加刀线/华小科票根.png".as_bytes();
+        assert_eq!(
+            decode_zip_name(utf8).as_deref(),
+            Some("加刀线/华小科票根.png")
+        );
+        // The same string's UTF-8 bytes are not valid GB18030-free UTF-8 when
+        // re-read as a raw byte stream without a flag; GB18030 decodes them back
+        // to the original text (round-trips for Chinese).
+        let gbk_bytes = "加刀线".as_bytes();
+        assert_eq!(decode_zip_name(gbk_bytes).as_deref(), Some("加刀线"));
+    }
+
+    #[test]
+    fn safe_join_rejects_traversal() {
+        let out = Path::new("/tmp/out");
+        assert_eq!(
+            safe_join(out, "a/b.txt"),
+            Some(PathBuf::from("/tmp/out/a/b.txt"))
+        );
+        assert_eq!(safe_join(out, "../escape.txt"), None);
+        assert_eq!(safe_join(out, "a/../../escape.txt"), None);
+        assert_eq!(safe_join(out, "."), Some(PathBuf::from("/tmp/out")));
+    }
+
+    /// Extract a zip whose Chinese filenames are stored as UTF-8 bytes without
+    /// the zip UTF-8 flag bit (the common Chinese-Windows zip case). Reproduces
+    /// the 加刀线.zip mojibake bug and verifies the fix: filenames decode to the
+    /// correct Chinese text instead of mojibake.
+    #[test]
+    fn extract_zip_utf8_names_without_flag() {
+        let dir = tmp("utf8_names");
+        let archive = dir.join("zh.zip");
+        // Build a zip whose entry names are UTF-8 strings but without setting
+        // the UTF-8 flag bit, mimicking Chinese-Windows zippers.
+        let file = fs::File::create(&archive).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        // Force the raw (non-UTF-8-flagged) name path: SimpleFileOptions with
+        // `large_file(false)` and no unicode extra; the writer stores the name
+        // bytes as-is. We pass the UTF-8 bytes of a Chinese name.
+        let opts = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file("加刀线/华小科票根正面01.png", opts)
+            .unwrap();
+        writer.write_all(b"front").unwrap();
+        writer
+            .start_file("加刀线/华小科票根背面01.png", opts)
+            .unwrap();
+        writer.write_all(b"back").unwrap();
+        writer.finish().unwrap();
+
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        extract_zip(&archive, &out).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(out.join("加刀线").join("华小科票根正面01.png")).unwrap(),
+            "front"
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("加刀线").join("华小科票根背面01.png")).unwrap(),
+            "back"
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 }

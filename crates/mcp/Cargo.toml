@@ -22,6 +22,9 @@ enigo = { version = "0.2", optional = true }
 zip = { version = "2", optional = true }
 tar = { version = "0.4", optional = true }
 flate2 = { version = "1", optional = true }
+# Filename-encoding detection for zip entries (Chinese GBK/GB18030 zips without
+# the UTF-8 flag bit). Behind the `archive` feature.
+encoding_rs = { version = "0.8", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
@@ -29,4 +32,4 @@ tokio = { version = "1", features = ["macros", "rt"] }
 [features]
 default = ["automation", "archive"]
 automation = ["dep:enigo"]
-archive = ["dep:zip", "dep:tar", "dep:flate2"]
+archive = ["dep:zip", "dep:tar", "dep:flate2", "dep:encoding_rs"]
