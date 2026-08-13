@@ -9,6 +9,10 @@ import { isTauri } from './tauri';
 import { mountModel, updateHitArea, layoutModel, currentModelUrl, scanVisibleExtent, refreshPixelMap } from './model';
 import { applyWindowSize, fadeCanvas, setTargetSize } from './window-size';
 
+/** Fade duration (ms) for the settings panel open/close transition. Shorter
+ * than the Dev toggle — just enough to make the appear/disappear smooth. */
+const PANEL_FADE_MS = 600;
+
 /**
  * Register all backend-event listeners that drive the main window:
  * - `MODEL_CHANGED`: hot-swap the model (load new before destroying old).
@@ -73,7 +77,7 @@ export async function wireEventListeners(
 	// (when the panel closes), so the appear/disappear isn't abrupt.
 	await listen(EVENT.PANEL_OPENING, async () => {
 		try {
-			await fadeCanvas(canvas, 0);
+			await fadeCanvas(canvas, 0, PANEL_FADE_MS);
 			void invoke(IPC.HIDE_MAIN_WINDOW).catch(() => {});
 		} catch {
 			void invoke(IPC.HIDE_MAIN_WINDOW).catch(() => {});
@@ -82,7 +86,7 @@ export async function wireEventListeners(
 	await listen(EVENT.PANEL_CLOSING, () => {
 		// Reset opacity to 0 before fading in (the window was hidden at 0).
 		canvas.style.opacity = '0';
-		void fadeCanvas(canvas, 1).catch(() => {});
+		void fadeCanvas(canvas, 1, PANEL_FADE_MS).catch(() => {});
 	}).catch((e) => console.error('[HandheldMaid] panel-closing listener error:', e));
 }
 
