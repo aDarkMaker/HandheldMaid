@@ -4,10 +4,11 @@
 //! - [`action`]    behavior actions (model/speak/tool), categorized by execution site
 //! - [`behavior`]  rule-based behavior engine (event -> named event -> action)
 //! - [`event_bus`] named-event subscriptions with weighted random selection
-//! - [`tool`]      MCP-style tool registry
+//! - [`tool`]      MCP-style tool trait + registry (the plugin contract)
 //! - [`input`]     global keyboard/mouse hooks (behind `input` feature)
-//! - [`automation`] system automation helpers (behind `automation` feature)
-//! - [`tools`]     built-in tools shipped with the core
+//!
+//! Built-in capability tools (time, archive, system_control) live in the
+//! separate `hm-mcp` crate, not here — `hm-core` keeps only the tool *contract*.
 
 pub mod action;
 pub mod behavior;
@@ -16,12 +17,6 @@ pub mod tool;
 
 #[cfg(feature = "input")]
 pub mod input;
-
-#[cfg(feature = "automation")]
-pub mod automation;
-
-#[cfg(feature = "automation")]
-pub mod tools;
 
 pub use behavior::BehaviorError;
 

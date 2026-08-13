@@ -4,7 +4,7 @@
 //! automation backend is held in an `Arc<Mutex<_>>` for interior mutability.
 
 use crate::automation::Automation;
-use crate::tool::{Tool, ToolError};
+use hm_core::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};

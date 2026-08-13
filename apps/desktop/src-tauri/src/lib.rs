@@ -30,9 +30,10 @@ use state::{resolve_assets_dir, AppState};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-use hm_core::automation::Automation;
-use hm_core::tools::archive::ArchiveTool;
-use hm_core::tools::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_NAME};
+use hm_mcp::automation::Automation;
+use hm_mcp::archive::ArchiveTool;
+use hm_mcp::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_NAME};
+use hm_mcp::time::{TimeTool, NAME as TIME_NAME};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -77,7 +78,9 @@ pub fn run() {
                 tools.register(Arc::new(SystemControlTool::new(automation)));
                 tracing::info!(tool = SYSTEM_CONTROL_NAME, "registered tool");
                 tools.register(Arc::new(ArchiveTool::new()));
-                tracing::info!(tool = hm_core::tools::archive::NAME, "registered tool");
+                tracing::info!(tool = hm_mcp::archive::NAME, "registered tool");
+                tools.register(Arc::new(TimeTool));
+                tracing::info!(tool = TIME_NAME, "registered tool");
             }
 
             // Wire global input (rdev) -> behavior dispatch + dynamic click-through

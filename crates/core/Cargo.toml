@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Cross-platform core for HandheldMaid: behavior engine, input hooks, system ops."
+description = "Cross-platform core for HandheldMaid: behavior engine, input hooks, MCP tool contract."
 
 [dependencies]
 # Keep this lean. The core must compile on every target Tauri supports.
@@ -16,15 +16,9 @@ tracing = "0.1"
 async-trait = "0.1"
 rand = "0.8"
 
-# Platform input/system operations are behind feature flags so the core
-# stays buildable in headless contexts (CI, unit tests).
+# Global keyboard/mouse hooks are behind a feature flag so the core stays
+# buildable in headless contexts (CI, unit tests).
 rdev = { version = "0.5", optional = true }
-enigo = { version = "0.2", optional = true }
-
-# Archive ops (zip on Windows, tar.gz on macOS) behind a feature flag.
-zip = { version = "2", optional = true }
-tar = { version = "0.4", optional = true }
-flate2 = { version = "1", optional = true }
 
 [dev-dependencies]
 # Deterministic RNG for tests that exercise weighted random selection.
@@ -33,7 +27,5 @@ rand_chacha = "0.3"
 tokio = { version = "1", features = ["macros", "rt"] }
 
 [features]
-default = ["input", "automation", "archive"]
+default = ["input"]
 input = ["dep:rdev"]
-automation = ["dep:enigo"]
-archive = ["dep:zip", "dep:tar", "dep:flate2"]

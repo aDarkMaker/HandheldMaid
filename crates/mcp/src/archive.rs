@@ -6,7 +6,7 @@
 //! same-named subfolder next to the archive (extract). Existing outputs are
 //! rejected rather than overwritten.
 
-use crate::tool::{Tool, ToolError};
+use hm_core::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::fs;

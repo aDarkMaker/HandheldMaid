@@ -6,6 +6,8 @@
  * TS shapes must match the serialized form exactly.
  */
 
+export * from './tool-catalog';
+
 /** Mirrors `hm_core::behavior::EventKind`. `pettap` = tap on the pet itself. */
 export type EventKind = 'keydown' | 'keyup' | 'click' | 'dblclick' | 'interval' | 'pettap';
 

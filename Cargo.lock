@@ -393,8 +393,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.2.1",
 ]
 
@@ -788,6 +790,7 @@ name = "desktop"
 version = "0.1.0"
 dependencies = [
  "hm-core",
+ "hm-mcp",
  "rand",
  "rand_chacha",
  "serde",
@@ -1530,17 +1533,30 @@ name = "hm-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "enigo",
- "flate2",
  "rand",
  "rand_chacha",
  "rdev",
  "serde",
  "serde_json",
- "tar",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "hm-mcp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "enigo",
+ "flate2",
+ "hm-core",
+ "serde",
+ "serde_json",
+ "tar",
+ "thiserror 1.0.69",
+ "tokio",
  "zip",
 ]
 

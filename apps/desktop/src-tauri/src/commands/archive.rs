@@ -18,7 +18,7 @@ pub async fn handle_drop(app: tauri::AppHandle, state: tauri::State<'_, AppState
         .tools
         .lock()
         .unwrap()
-        .get(hm_core::tools::archive::NAME)
+        .get(hm_mcp::archive::NAME)
         .ok_or_else(|| "archive tool not registered".to_string())?;
     // Decide compress vs extract from the path type.
     let p = std::path::PathBuf::from(&path);
