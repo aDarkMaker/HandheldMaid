@@ -30,8 +30,8 @@ use state::{resolve_assets_dir, AppState};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 
-use hm_mcp::automation::Automation;
 use hm_mcp::archive::ArchiveTool;
+use hm_mcp::automation::Automation;
 use hm_mcp::system_control::{SystemControlTool, NAME as SYSTEM_CONTROL_NAME};
 use hm_mcp::time::{TimeTool, NAME as TIME_NAME};
 
@@ -53,7 +53,10 @@ pub fn run() {
             // defaults to ~20% before the first scan — see window-size.ts).
             let (pw, ph) = *app.state::<AppState>().pet_size.lock().unwrap();
             let win_h = ph + ((ph as f32 * 0.2).round() as u32);
-            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize { width: pw, height: win_h }));
+            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                width: pw,
+                height: win_h,
+            }));
 
             // Resolve the initial model (prefer "miku", else the first discovered).
             let initial = {

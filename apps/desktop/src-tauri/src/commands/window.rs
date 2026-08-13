@@ -20,7 +20,10 @@ pub fn move_window(window: tauri::WebviewWindow, x: i32, y: i32) -> Result<(), S
 #[tauri::command]
 pub fn resize_window_physical(window: tauri::WebviewWindow, w: u32, h: u32) -> Result<(), String> {
     window
-        .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: w, height: h }))
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width: w,
+            height: h,
+        }))
         .map_err(|e| e.to_string())
 }
 
@@ -39,7 +42,11 @@ pub fn resize_window_physical(window: tauri::WebviewWindow, w: u32, h: u32) -> R
 /// single `SetWindowPos` with `SWP_NOZORDER | SWP_NOACTIVATE` avoids the
 /// intermediate paint.
 #[tauri::command]
-pub fn resize_window_keep_bottom(window: tauri::WebviewWindow, w: u32, h: u32) -> Result<(), String> {
+pub fn resize_window_keep_bottom(
+    window: tauri::WebviewWindow,
+    w: u32,
+    h: u32,
+) -> Result<(), String> {
     // Current outer position (top-left) and size, in physical px.
     let pos = window.outer_position().map_err(|e| e.to_string())?;
     let size = window.outer_size().map_err(|e| e.to_string())?;
@@ -51,9 +58,7 @@ pub fn resize_window_keep_bottom(window: tauri::WebviewWindow, w: u32, h: u32) -
     #[cfg(windows)]
     {
         use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::{
-            SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
-        };
+        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER};
         // The HWND from Tauri is the webview's parent window's HWND.
         let tauri_hwnd = window.hwnd().map_err(|e| e.to_string())?;
         let hwnd = HWND(tauri_hwnd.0 as *mut core::ffi::c_void);
@@ -76,10 +81,16 @@ pub fn resize_window_keep_bottom(window: tauri::WebviewWindow, w: u32, h: u32) -
     #[cfg(not(windows))]
     {
         window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: w, height: h }))
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                width: w,
+                height: h,
+            }))
             .map_err(|e| e.to_string())?;
         window
-            .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: pos.x, y: new_top_y }))
+            .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                x: pos.x,
+                y: new_top_y,
+            }))
             .map_err(|e| e.to_string())
     }
 }
@@ -97,13 +108,21 @@ pub fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn set_ignore_mouse_events(window: tauri::WebviewWindow, ignore: bool) -> Result<(), String> {
-    window.set_ignore_cursor_events(ignore).map_err(|e| e.to_string())
+    window
+        .set_ignore_cursor_events(ignore)
+        .map_err(|e| e.to_string())
 }
 
 /// Register the pet's screen-space hit area for dynamic click-through.
 /// Called by the frontend after the model is laid out (and on move/resize).
 #[tauri::command]
-pub fn register_hit_area(state: tauri::State<AppState>, x: i32, y: i32, w: i32, h: i32) -> Result<(), String> {
+pub fn register_hit_area(
+    state: tauri::State<AppState>,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+) -> Result<(), String> {
     tracing::info!(x, y, w, h, "register hit area");
     *state.hit_area.lock().unwrap() = Some(HitArea { x, y, w, h });
     Ok(())

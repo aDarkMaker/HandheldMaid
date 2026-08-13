@@ -30,7 +30,11 @@ pub fn update_click_through(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32
             (!inside, format!("area={:?} inside={}", area, inside))
         }
         None => {
-            tracing::debug!(cursor_x, cursor_y, "update_click_through: no hit area -> passthrough");
+            tracing::debug!(
+                cursor_x,
+                cursor_y,
+                "update_click_through: no hit area -> passthrough"
+            );
             (true, "none".to_string())
         }
     };
@@ -60,8 +64,12 @@ pub fn update_click_through(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32
 /// drive gaze following (eyes track the pointer anywhere on screen).
 /// Window-relative pixels (top-left = 0,0), matching Live2D's `focus(x, y)`.
 pub fn emit_cursor(app: &tauri::AppHandle, cursor_x: i32, cursor_y: i32) {
-    let Some(window) = app.get_webview_window("main") else { return };
-    let Ok(win_pos) = window.outer_position() else { return };
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let Ok(win_pos) = window.outer_position() else {
+        return;
+    };
     let rel_x = cursor_x - win_pos.x;
     let rel_y = cursor_y - win_pos.y;
     let _ = app.emit("hm://cursor", serde_json::json!({ "x": rel_x, "y": rel_y }));

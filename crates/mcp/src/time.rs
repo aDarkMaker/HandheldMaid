@@ -1,9 +1,9 @@
 //! `time` tool: return the current system date/time in several formats. No
 //! platform dependencies — always available.
 
-use hm_core::tool::{Tool, ToolError};
 use async_trait::async_trait;
 use chrono::{Local, Utc};
+use hm_core::tool::{Tool, ToolError};
 use serde_json::{json, Value};
 
 /// Tool name, exposed for registration wiring.

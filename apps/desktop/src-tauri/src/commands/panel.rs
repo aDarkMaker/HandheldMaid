@@ -18,16 +18,20 @@ pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
         window.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let settings = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
-        .title("HandheldMaid Settings")
-        .inner_size(480.0, 600.0)
-        .decorations(true)
-        .always_on_top(false)
-        .resizable(true)
-        .transparent(false)
-        .skip_taskbar(false)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let settings = tauri::WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        tauri::WebviewUrl::App("settings.html".into()),
+    )
+    .title("HandheldMaid Settings")
+    .inner_size(480.0, 600.0)
+    .decorations(true)
+    .always_on_top(false)
+    .resizable(true)
+    .transparent(false)
+    .skip_taskbar(false)
+    .build()
+    .map_err(|e| e.to_string())?;
 
     // Force click-through while the panel is open so rdev MouseMove doesn't
     // re-enable interaction. Don't hide yet — let the frontend fade out first,
@@ -63,15 +67,21 @@ pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
 pub fn show_context_menu(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 
-    let window = app.get_webview_window("main").ok_or("main window not found")?;
-    let open = MenuItem::with_id(&app, "open_settings", "Open Settings", true, None::<&str>).map_err(|e| e.to_string())?;
+    let window = app
+        .get_webview_window("main")
+        .ok_or("main window not found")?;
+    let open = MenuItem::with_id(&app, "open_settings", "Open Settings", true, None::<&str>)
+        .map_err(|e| e.to_string())?;
     let state = app.state::<AppState>();
     let dev_on = *state.dev_mode.lock().unwrap();
-    let dev = CheckMenuItem::with_id(&app, "toggle_dev", "Dev", true, dev_on, None::<&str>).map_err(|e| e.to_string())?;
-    let quit = MenuItem::with_id(&app, "quit", "Quit", true, None::<&str>).map_err(|e| e.to_string())?;
+    let dev = CheckMenuItem::with_id(&app, "toggle_dev", "Dev", true, dev_on, None::<&str>)
+        .map_err(|e| e.to_string())?;
+    let quit =
+        MenuItem::with_id(&app, "quit", "Quit", true, None::<&str>).map_err(|e| e.to_string())?;
     let sep1 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
     let sep2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
-    let menu = Menu::with_items(&app, &[&open, &sep1, &dev, &sep2, &quit]).map_err(|e| e.to_string())?;
+    let menu =
+        Menu::with_items(&app, &[&open, &sep1, &dev, &sep2, &quit]).map_err(|e| e.to_string())?;
     window.popup_menu(&menu).map_err(|e| e.to_string())
 }
 

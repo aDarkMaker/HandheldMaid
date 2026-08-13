@@ -29,18 +29,26 @@ impl Automation {
     }
 
     pub fn type_text(&mut self, text: &str) -> Result<(), AutomationError> {
-        self.enigo.text(text).map_err(|e| AutomationError::Backend(e.to_string()))
+        self.enigo
+            .text(text)
+            .map_err(|e| AutomationError::Backend(e.to_string()))
     }
 
     pub fn key(&mut self, key: Key) -> Result<(), AutomationError> {
-        self.enigo.key(key, Direction::Click).map_err(|e| AutomationError::Backend(e.to_string()))
+        self.enigo
+            .key(key, Direction::Click)
+            .map_err(|e| AutomationError::Backend(e.to_string()))
     }
 
     pub fn move_mouse(&mut self, x: i32, y: i32) -> Result<(), AutomationError> {
-        self.enigo.move_mouse(x, y, Coordinate::Abs).map_err(|e| AutomationError::Backend(e.to_string()))
+        self.enigo
+            .move_mouse(x, y, Coordinate::Abs)
+            .map_err(|e| AutomationError::Backend(e.to_string()))
     }
 
     pub fn click(&mut self) -> Result<(), AutomationError> {
-        self.enigo.button(Button::Left, Direction::Click).map_err(|e| AutomationError::Backend(e.to_string()))
+        self.enigo
+            .button(Button::Left, Direction::Click)
+            .map_err(|e| AutomationError::Backend(e.to_string()))
     }
 }

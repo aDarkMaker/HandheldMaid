@@ -181,5 +181,7 @@ pub fn resolve_assets_dir(app: &tauri::AppHandle) -> PathBuf {
     if dev_assets.exists() {
         return dev_assets;
     }
-    app.path().resource_dir().unwrap_or_else(|_| PathBuf::from("assets"))
+    app.path()
+        .resource_dir()
+        .unwrap_or_else(|_| PathBuf::from("assets"))
 }

@@ -67,7 +67,11 @@ impl Default for BehaviorEngine {
 
 impl BehaviorEngine {
     pub fn new() -> Self {
-        Self { rules: HashMap::new(), order: Vec::new(), bus: EventBus::new() }
+        Self {
+            rules: HashMap::new(),
+            order: Vec::new(),
+            bus: EventBus::new(),
+        }
     }
 
     /// Register a rule. Replaces an existing rule with the same name.
@@ -84,7 +88,9 @@ impl BehaviorEngine {
     /// Remove a rule by name.
     pub fn unregister(&mut self, name: &str) -> Result<Rule, BehaviorError> {
         self.order.retain(|n| n != name);
-        self.rules.remove(name).ok_or(BehaviorError::RuleNotFound(name.to_string()))
+        self.rules
+            .remove(name)
+            .ok_or(BehaviorError::RuleNotFound(name.to_string()))
     }
 
     /// Return the rules that match `kind`, in insertion order.
@@ -142,11 +148,19 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     fn rule(name: &str, event: EventKind, emit: &str) -> Rule {
-        Rule { name: name.into(), event, probability: 1.0, emit_event: emit.into() }
+        Rule {
+            name: name.into(),
+            event,
+            probability: 1.0,
+            emit_event: emit.into(),
+        }
     }
 
     fn model_action(motion: &str) -> Action {
-        Action::Model(ModelAction { motion: Some(motion.into()), expression: None })
+        Action::Model(ModelAction {
+            motion: Some(motion.into()),
+            expression: None,
+        })
     }
 
     fn seeded() -> ChaCha8Rng {
@@ -156,8 +170,12 @@ mod tests {
     #[test]
     fn register_and_match() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("greet", EventKind::KeyDown, "on_key")).unwrap();
-        engine.register(rule("idle", EventKind::Interval, "on_idle")).unwrap();
+        engine
+            .register(rule("greet", EventKind::KeyDown, "on_key"))
+            .unwrap();
+        engine
+            .register(rule("idle", EventKind::Interval, "on_idle"))
+            .unwrap();
 
         assert_eq!(engine.matched(EventKind::KeyDown).len(), 1);
         assert_eq!(engine.matched(EventKind::Interval).len(), 1);
@@ -167,7 +185,9 @@ mod tests {
     #[test]
     fn unregister_removes_rule() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("greet", EventKind::KeyDown, "on_key")).unwrap();
+        engine
+            .register(rule("greet", EventKind::KeyDown, "on_key"))
+            .unwrap();
         engine.unregister("greet").unwrap();
         assert!(engine.is_empty());
     }
@@ -175,8 +195,12 @@ mod tests {
     #[test]
     fn duplicate_name_replaces() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("greet", EventKind::KeyDown, "on_key")).unwrap();
-        engine.register(rule("greet", EventKind::Click, "on_click")).unwrap();
+        engine
+            .register(rule("greet", EventKind::KeyDown, "on_key"))
+            .unwrap();
+        engine
+            .register(rule("greet", EventKind::Click, "on_click"))
+            .unwrap();
         assert_eq!(engine.len(), 1);
         assert_eq!(engine.matched(EventKind::Click).len(), 1);
     }
@@ -184,7 +208,9 @@ mod tests {
     #[test]
     fn dispatch_yields_selected_subscription_action() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("pet", EventKind::PetTap, "on_pet")).unwrap();
+        engine
+            .register(rule("pet", EventKind::PetTap, "on_pet"))
+            .unwrap();
         engine
             .bus_mut()
             .subscribe(Subscription::new("pet_tap", "on_pet", model_action("Tap")))
@@ -201,7 +227,9 @@ mod tests {
     #[test]
     fn dispatch_with_no_subscriptions_yields_nothing() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("pet", EventKind::PetTap, "on_pet")).unwrap();
+        engine
+            .register(rule("pet", EventKind::PetTap, "on_pet"))
+            .unwrap();
         // No subscriptions on "on_pet".
         let actions = engine.dispatch(EventKind::PetTap, &mut seeded());
         assert!(actions.is_empty());
@@ -225,7 +253,9 @@ mod tests {
     #[test]
     fn dispatch_picks_one_of_many_subscriptions() {
         let mut engine = BehaviorEngine::new();
-        engine.register(rule("idle", EventKind::Interval, "on_idle")).unwrap();
+        engine
+            .register(rule("idle", EventKind::Interval, "on_idle"))
+            .unwrap();
         engine
             .bus_mut()
             .subscribe(Subscription::new("idle1", "on_idle", model_action("Idle1")).with_weight(1))

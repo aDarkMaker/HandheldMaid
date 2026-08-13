@@ -4,8 +4,8 @@
 //! automation backend is held in an `Arc<Mutex<_>>` for interior mutability.
 
 use crate::automation::Automation;
-use hm_core::tool::{Tool, ToolError};
 use async_trait::async_trait;
+use hm_core::tool::{Tool, ToolError};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
@@ -67,18 +67,22 @@ impl Tool for SystemControlTool {
                     .get("text")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| ToolError::InvalidArgs("missing `text`".into()))?;
-                a.type_text(text).map_err(|e| ToolError::Execution(e.to_string()))?;
+                a.type_text(text)
+                    .map_err(|e| ToolError::Execution(e.to_string()))?;
             }
             "move_mouse" => {
                 let x = args
                     .get("x")
                     .and_then(|v| v.as_i64())
-                    .ok_or_else(|| ToolError::InvalidArgs("missing `x`".into()))? as i32;
+                    .ok_or_else(|| ToolError::InvalidArgs("missing `x`".into()))?
+                    as i32;
                 let y = args
                     .get("y")
                     .and_then(|v| v.as_i64())
-                    .ok_or_else(|| ToolError::InvalidArgs("missing `y`".into()))? as i32;
-                a.move_mouse(x, y).map_err(|e| ToolError::Execution(e.to_string()))?;
+                    .ok_or_else(|| ToolError::InvalidArgs("missing `y`".into()))?
+                    as i32;
+                a.move_mouse(x, y)
+                    .map_err(|e| ToolError::Execution(e.to_string()))?;
             }
             "click" => {
                 a.click().map_err(|e| ToolError::Execution(e.to_string()))?;

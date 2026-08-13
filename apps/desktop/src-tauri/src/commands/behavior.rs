@@ -8,7 +8,12 @@ use hm_core::event_bus::Subscription;
 
 #[tauri::command]
 pub fn register_rule(state: tauri::State<AppState>, rule: Rule) -> Result<(), String> {
-    state.behavior.lock().unwrap().register(rule).map_err(|e| e.to_string())
+    state
+        .behavior
+        .lock()
+        .unwrap()
+        .register(rule)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -36,7 +41,13 @@ pub fn matched_rules(state: tauri::State<AppState>, kind: EventKind) -> Vec<Stri
 
 #[tauri::command]
 pub fn subscribe(state: tauri::State<AppState>, subscription: Subscription) -> Result<(), String> {
-    state.behavior.lock().unwrap().bus_mut().subscribe(subscription).map_err(|e| e.to_string())
+    state
+        .behavior
+        .lock()
+        .unwrap()
+        .bus_mut()
+        .subscribe(subscription)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -58,4 +69,3 @@ pub async fn dispatch_event(app: tauri::AppHandle, kind: EventKind) -> Result<()
     dispatch(app, kind).await;
     Ok(())
 }
-

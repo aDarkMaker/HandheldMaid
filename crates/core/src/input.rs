@@ -51,7 +51,10 @@ pub struct InputListener {
 
 impl InputListener {
     pub fn new(callback: InputCallback) -> Self {
-        Self { callback, _stop: Arc::new(Mutex::new(false)) }
+        Self {
+            callback,
+            _stop: Arc::new(Mutex::new(false)),
+        }
     }
 
     /// Start listening on a background thread. Returns immediately.
@@ -70,16 +73,30 @@ impl InputListener {
 
 fn translate(event: &rdev::Event, cb: &InputCallback) {
     let translated = match event.event_type {
-        rdev::EventType::KeyPress(_) => Some(InputEvent { kind: InputKind::KeyDown, x: 0, y: 0 }),
-        rdev::EventType::KeyRelease(_) => Some(InputEvent { kind: InputKind::KeyUp, x: 0, y: 0 }),
+        rdev::EventType::KeyPress(_) => Some(InputEvent {
+            kind: InputKind::KeyDown,
+            x: 0,
+            y: 0,
+        }),
+        rdev::EventType::KeyRelease(_) => Some(InputEvent {
+            kind: InputKind::KeyUp,
+            x: 0,
+            y: 0,
+        }),
         rdev::EventType::ButtonPress(btn) => {
             let (x, y) = coords(event);
             debug!(button = ?btn, x, y, "click");
-            Some(InputEvent { kind: InputKind::Click, x, y })
+            Some(InputEvent {
+                kind: InputKind::Click,
+                x,
+                y,
+            })
         }
-        rdev::EventType::MouseMove { x, y } => {
-            Some(InputEvent { kind: InputKind::MouseMove, x: x as i32, y: y as i32 })
-        }
+        rdev::EventType::MouseMove { x, y } => Some(InputEvent {
+            kind: InputKind::MouseMove,
+            x: x as i32,
+            y: y as i32,
+        }),
         _ => None,
     };
     if let Some(e) = translated {

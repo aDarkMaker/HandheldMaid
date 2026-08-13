@@ -57,7 +57,10 @@ impl Default for ToolRegistry {
 
 impl ToolRegistry {
     pub fn new() -> Self {
-        Self { tools: HashMap::new(), order: Vec::new() }
+        Self {
+            tools: HashMap::new(),
+            order: Vec::new(),
+        }
     }
 
     /// Register (or replace) a tool by its name.
@@ -73,7 +76,10 @@ impl ToolRegistry {
     /// Remove a tool by name.
     pub fn unregister(&mut self, name: &str) -> Result<(), ToolError> {
         self.order.retain(|n| n != name);
-        self.tools.remove(name).map(|_| ()).ok_or_else(|| ToolError::NotFound(name.to_string()))
+        self.tools
+            .remove(name)
+            .map(|_| ())
+            .ok_or_else(|| ToolError::NotFound(name.to_string()))
     }
 
     /// Borrow a tool as `Arc` so callers can release the registry lock before
@@ -144,7 +150,10 @@ mod tests {
     async fn invoke_returns_args() {
         let mut reg = ToolRegistry::new();
         reg.register(Arc::new(EchoTool));
-        let out = reg.invoke("echo", serde_json::json!({"hi": 1})).await.unwrap();
+        let out = reg
+            .invoke("echo", serde_json::json!({"hi": 1}))
+            .await
+            .unwrap();
         assert_eq!(out["hi"], 1);
     }
 

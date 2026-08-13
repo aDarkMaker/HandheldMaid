@@ -2,8 +2,10 @@
 //! archive settings. Each setter broadcasts a change event so the main window
 //! can react immediately.
 
-use crate::events::{EVENT_ARCHIVE_SETTINGS_CHANGED, EVENT_INPUT_SETTINGS_CHANGED, EVENT_SIZE_CHANGED};
-use crate::state::{ArchiveSettings, AppState, InputActionSettings};
+use crate::events::{
+    EVENT_ARCHIVE_SETTINGS_CHANGED, EVENT_INPUT_SETTINGS_CHANGED, EVENT_SIZE_CHANGED,
+};
+use crate::state::{AppState, ArchiveSettings, InputActionSettings};
 use tauri::Emitter;
 
 /// Get the current pet physical size. Returns the default on first run.
@@ -16,7 +18,12 @@ pub fn get_pet_size(state: tauri::State<AppState>) -> (u32, u32) {
 /// window re-applies it immediately. The size lives here (not in webview
 /// localStorage) because the settings and main windows have isolated storage.
 #[tauri::command]
-pub fn set_pet_size(app: tauri::AppHandle, state: tauri::State<AppState>, w: u32, h: u32) -> Result<(), String> {
+pub fn set_pet_size(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    w: u32,
+    h: u32,
+) -> Result<(), String> {
     let clamped = (w.clamp(100, 2000), h.clamp(100, 2000));
     *state.pet_size.lock().unwrap() = clamped;
     let _ = app.emit(EVENT_SIZE_CHANGED, clamped);
@@ -65,7 +72,11 @@ pub fn get_archive_settings(state: tauri::State<AppState>) -> ArchiveSettings {
 
 /// Set the archive settings and broadcast so the main window can react.
 #[tauri::command]
-pub fn set_archive_settings(app: tauri::AppHandle, state: tauri::State<AppState>, enabled: bool) -> Result<(), String> {
+pub fn set_archive_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    enabled: bool,
+) -> Result<(), String> {
     let s = ArchiveSettings { enabled };
     *state.archive_settings.lock().unwrap() = s;
     let _ = app.emit(EVENT_ARCHIVE_SETTINGS_CHANGED, s);

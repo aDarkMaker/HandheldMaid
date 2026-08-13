@@ -27,7 +27,10 @@ pub async fn dispatch(app: tauri::AppHandle, kind: EventKind) {
             if source == "click" {
                 state.reset_cooldown();
             }
-            let _ = app.emit(EVENT_TRIGGER_INPUT_ACTION, serde_json::json!({ "source": source }));
+            let _ = app.emit(
+                EVENT_TRIGGER_INPUT_ACTION,
+                serde_json::json!({ "source": source }),
+            );
             return;
         }
     }
@@ -49,8 +52,12 @@ pub async fn dispatch(app: tauri::AppHandle, kind: EventKind) {
             }
             Action::Tool(tool_action) => {
                 // Clone the Arc and release the registry lock before awaiting.
-                let tool: Option<Arc<dyn Tool>> =
-                    app.state::<AppState>().tools.lock().unwrap().get(&tool_action.name);
+                let tool: Option<Arc<dyn Tool>> = app
+                    .state::<AppState>()
+                    .tools
+                    .lock()
+                    .unwrap()
+                    .get(&tool_action.name);
                 match tool {
                     Some(t) => {
                         if let Err(e) = t.execute(tool_action.args).await {

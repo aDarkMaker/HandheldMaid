@@ -60,7 +60,10 @@ mod tests {
 
     #[test]
     fn model_action_serializes_with_category_tag() {
-        let action = Action::Model(ModelAction { motion: Some("Tap".into()), expression: None });
+        let action = Action::Model(ModelAction {
+            motion: Some("Tap".into()),
+            expression: None,
+        });
         let json = serde_json::to_value(&action).unwrap();
         assert_eq!(json["category"], "model");
         assert_eq!(json["motion"], "Tap");
@@ -81,7 +84,10 @@ mod tests {
 
     #[test]
     fn speak_action_round_trips() {
-        let action = Action::Speak(SpeakAction { text: "hello".into(), lang: Some("en-US".into()) });
+        let action = Action::Speak(SpeakAction {
+            text: "hello".into(),
+            lang: Some("en-US".into()),
+        });
         let json = serde_json::to_string(&action).unwrap();
         let back: Action = serde_json::from_str(&json).unwrap();
         match back {
@@ -95,10 +101,20 @@ mod tests {
 
     #[test]
     fn category_predicates() {
-        assert!(Action::Model(ModelAction { motion: None, expression: None }).is_frontend());
-        assert!(Action::Speak(SpeakAction { text: "x".into(), lang: None }).is_frontend());
-        assert!(
-            Action::Tool(ToolAction { name: "t".into(), args: serde_json::Value::Null }).is_backend()
-        );
+        assert!(Action::Model(ModelAction {
+            motion: None,
+            expression: None
+        })
+        .is_frontend());
+        assert!(Action::Speak(SpeakAction {
+            text: "x".into(),
+            lang: None
+        })
+        .is_frontend());
+        assert!(Action::Tool(ToolAction {
+            name: "t".into(),
+            args: serde_json::Value::Null
+        })
+        .is_backend());
     }
 }
