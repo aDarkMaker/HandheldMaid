@@ -30,18 +30,18 @@ canvas {
 }
 
 /* ── Toast ───────────────────────────────────────────────────────────────── */
-/* Speech-bubble toast above the pet. The window is taller than the pet (extra
-   space on top), so the bubble floats in that space without overlapping. */
+/* Speech-bubble toast. The window reserves a fixed band above the pet (see
+   `bubbleAreaHeight` in window-size.ts — a constant), and the toast lives
+   inside that band. It is anchored to the band's center and fades in/out in
+   place. The toast height changes NOTHING about the window: no resize, no
+   relayout, no model movement. */
 .toast {
-	/* Positioned within #stage (not the viewport) so the bubble aligns to the
-	   pet canvas regardless of the browser/desktop window-size difference. */
 	position: absolute;
-	/* Anchored by its *bottom* to just above the model (the model stays put).
-	   When the bubble wraps to more lines it grows *upward*; the window's top
-	   edge moves up to make room (applyWindowSize raises the window top when
-	   the bubble area grows), so a taller bubble is never clipped and never
-	   pushes the model. */
-	bottom: var(--bubble-bottom, 44px);
+	/* Anchored by its *bottom* to the model's visible top (the red line,
+	   `--bubble-bottom` set by positionBubble from --vis-top-css), so the bubble
+	   starts at the model's head and grows *upward* into the reserved band. The
+	   band (see bubbleAreaHeight, sized for 6 lines) guarantees no overflow. */
+	bottom: var(--bubble-bottom, 130px);
 	/* Centered between 10% left and 10% right gaps; width shrinks to content. */
 	left: 10%;
 	right: 10%;
@@ -69,9 +69,15 @@ canvas {
 		transform var(--t-state) var(--ease);
 	pointer-events: none;
 	z-index: 100;
-	/* Allow wrapping so long text wraps within the bubble instead of clipping. */
+	/* Allow wrapping so long text wraps within the bubble, but cap it at 6 lines:
+	   the window's bubble band is sized for 6 lines (see bubbleAreaHeight), so
+	   anything longer is clipped instead of pushing the band/model down. */
 	white-space: normal;
 	word-break: break-word;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 6;
+	overflow: hidden;
 }
 .toast--visible {
 	opacity: 1;

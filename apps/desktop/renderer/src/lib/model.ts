@@ -298,7 +298,7 @@ export async function refreshPixelMap(app: Application): Promise<void> {
 		return;
 	}
 	if (pixels.length < devW * devH * 4) return;
-	showPixelMap(pixels, devW, devH, 8);
+	showPixelMap(pixels, devW, devH, 8, resolution);
 }
 
 /**

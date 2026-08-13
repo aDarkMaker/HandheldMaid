@@ -154,21 +154,29 @@ export function showModelBoundsRect(rect: { x: number; y: number; w: number; h: 
  * Draw the framebuffer pixel map (purple) — every non-transparent pixel the
  * scan found, at device-px resolution. `pixels` is the RGBA Uint8Array from
  * `extract.pixels()`, `devW`/`devH` its device dimensions, `alphaThresh` the
- * cutoff. The footprint should match the visible model; if it covers the whole
- * window, the background is being read as opaque and the scan is invalid.
+ * cutoff. `resolution` is the renderer's density (its `renderer.resolution`).
+ *
+ * IMPORTANT: `devW`/`devH` are `renderer.width × renderer.resolution`, i.e. the
+ * renderer's *own* density — not necessarily `window.devicePixelRatio`. Using
+ * window DPR here would mis-scale the overlay on displays where the two differ
+ * (e.g. moving between 100%/125%/150% scaling), so the purple map drifts from
+ * the model while the CSS-absolute rects (red/blue/yellow) stay correct. We
+ * must use the same `resolution` the buffer was read at.
  */
 export function showPixelMap(
 	pixels: Uint8Array,
 	devW: number,
 	devH: number,
 	alphaThresh: number,
+	resolution: number,
 ) {
 	if (!pixelMapEl) return;
-	// The pixel buffer is device px. Set the canvas backing store to device px,
-	// but size it on screen in CSS px so it aligns 1:1 with the renderer canvas.
-	const resolution = (window.devicePixelRatio || 1);
-	const cssW = devW / resolution;
-	const cssH = devH / resolution;
+	// The pixel buffer is device px at `resolution`. Set the canvas backing store
+	// to those device px and size it on screen in CSS px — devW/resolution — so it
+	// aligns 1:1 with the renderer canvas at the renderer's own resolution.
+	const res = resolution || 1;
+	const cssW = devW / res;
+	const cssH = devH / res;
 	pixelMapEl.width = devW;
 	pixelMapEl.height = devH;
 	pixelMapEl.style.width = `${cssW}px`;

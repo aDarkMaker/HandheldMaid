@@ -47,44 +47,41 @@ export function getVisExtent(modelUrl: string): VisExtent | null {
 }
 
 /**
- * The bubble area is the reserved space above the model where the toast floats,
- * driven by the toast's actual rendered height (via a ResizeObserver in
- * drag-drop.ts). Units are physical px (same as `targetSize`); `setToastHeight`
- * scales the toast's CSS-px height by DPR on the way in.
+ * The bubble above the pet is a **fixed** reserved band — it never resizes the
+ * window or moves the model. The toast floats inside it; changing the toast's
+ * height only changes what shows inside the band, never the window size. This
+ * is what keeps the model perfectly still on any toast change (the window
+ * height stays constant, so `renderer.height` — the only thing the model's Y
+ * depends on — never changes).
  */
-const MIN_BUBBLE_AREA = 16;
-/** Small gap between the bubble bottom and the model top (physical px). */
-const BUBBLE_GAP = 6;
 /**
- * Rendered height of every active bubble source, in physical px. The reserved
- * area must be the *largest* bubble across sources (not whichever
- * ResizeObserver fired last), so a hidden one-line toast doesn't shrink the
- * window below a visible multi-line toast.
+ * The reserved bubble band is sized for the maximum allowed toast height: 6 text
+ * lines (see `.toast` clamp in main.css) + padding + a small gap above the model.
+ * /// lines at ~17px each = 102px; toast padding top+bottom = 16px; tail/gap ≈ 12px.
+ * This is a fixed constant — the window height never changes on toast content, so
+ * the model never moves.
  */
-const toastHeights = new Map<string, number>();
-let toastHeight = 0;
+const BUBBLE_AREA_PHYS = 130;
 
 /**
- * Update one bubble source's height (called by its ResizeObserver). `h` is CSS
- * px, scaled to physical px. The reserved area is the max across sources.
- * Returns true only when that max changes, so callers relayout only then.
+ * Keep `setToastHeight` as a no-op with a stable signature. The bubble band is
+ * a fixed constant (see `bubbleAreaHeight`), so a toast height change must NOT
+ * resize the window or move the model. Callers (drag-drop's ResizeObserver, the
+ * dev debug bubble) still invoke it, but it no longer drives any relayout.
  */
-export function setToastHeight(source: string, h: number): boolean {
-	const dpr = window.devicePixelRatio || 1;
-	toastHeights.set(source, Math.max(0, Math.round(h * dpr)));
-	const next = Math.max(0, ...toastHeights.values());
-	if (next === toastHeight) return false;
-	toastHeight = next;
-	return true;
+export function setToastHeight(_source: string, _h: number): boolean {
+	return false;
 }
 
-/** The bubble area height (physical px): the toast's rendered height + a gap,
- * with a minimum. */
+/**
+ * The reserved bubble area height (physical px). A constant: the model's Y is
+ * `renderer.height - petH/2`, so keeping this fixed keeps the model fixed.
+ */
 export function bubbleAreaHeight(_modelUrl: string): number {
-	return Math.max(MIN_BUBBLE_AREA, toastHeight + BUBBLE_GAP);
+	return BUBBLE_AREA_PHYS;
 }
 
-/** The physical window size: pet width, pet height + the bubble area on top. */
+/** The window size: pet width, pet height + the fixed bubble band on top. */
 export function windowPhysicalSize(modelUrl: string) {
 	return { w: targetSize.w, h: targetSize.h + bubbleAreaHeight(modelUrl) };
 }
