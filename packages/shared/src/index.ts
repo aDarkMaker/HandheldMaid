@@ -146,6 +146,8 @@ export const EVENT = {
 	ARCHIVE_SETTINGS_CHANGED: 'hm://archive-settings-changed',
 	/** Carries the result of a drag-drop archive operation (backend -> main). */
 	ARCHIVE_RESULT: 'hm://archive-result',
+	/** Carries `bool` when Dev (debug overlay) mode is toggled via the right-click menu. */
+	DEV_MODE_TOGGLED: 'hm://dev-mode-toggled',
 } as const;
 
 export type EventName = (typeof EVENT)[keyof typeof EVENT];

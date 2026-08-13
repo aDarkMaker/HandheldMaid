@@ -1,7 +1,7 @@
 //! Settings panel + context menu IPC commands: open/focus the settings window
 //! with a fade transition, and show the native right-click menu.
 
-use crate::events::{EVENT_PANEL_CLOSING, EVENT_PANEL_OPENING};
+use crate::events::{EVENT_DEV_MODE_TOGGLED, EVENT_PANEL_CLOSING, EVENT_PANEL_OPENING};
 use crate::state::AppState;
 use tauri::{Emitter, Manager};
 
@@ -55,24 +55,41 @@ pub fn open_settings(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Show a native context menu near the cursor (Open Settings / Quit).
+/// Show a native context menu near the cursor (Open Settings / Dev / Quit).
+/// "Dev" is a checkable item mirroring `AppState.dev_mode`: it toggles the
+/// debug overlay (grid + pixel-map + hit/bounds rects + debug bubble + red
+/// visible-top line). Off by default; the check mark shows the current state.
 #[tauri::command]
 pub fn show_context_menu(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 
     let window = app.get_webview_window("main").ok_or("main window not found")?;
     let open = MenuItem::with_id(&app, "open_settings", "Open Settings", true, None::<&str>).map_err(|e| e.to_string())?;
+    let state = app.state::<AppState>();
+    let dev_on = *state.dev_mode.lock().unwrap();
+    let dev = CheckMenuItem::with_id(&app, "toggle_dev", "Dev", true, dev_on, None::<&str>).map_err(|e| e.to_string())?;
     let quit = MenuItem::with_id(&app, "quit", "Quit", true, None::<&str>).map_err(|e| e.to_string())?;
-    let sep = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
-    let menu = Menu::with_items(&app, &[&open, &sep, &quit]).map_err(|e| e.to_string())?;
+    let sep1 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+    let sep2 = PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+    let menu = Menu::with_items(&app, &[&open, &sep1, &dev, &sep2, &quit]).map_err(|e| e.to_string())?;
     window.popup_menu(&menu).map_err(|e| e.to_string())
 }
 
-/// Handle context-menu item clicks (Open Settings / Quit).
+/// Handle context-menu item clicks (Open Settings / toggle Dev / Quit).
 pub fn handle_menu_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
     match event.id().as_ref() {
         "open_settings" => {
             let _ = open_settings(app.clone());
+        }
+        "toggle_dev" => {
+            // Toggle the shared dev-mode flag and notify the frontend so it
+            // shows/hides all debug overlays. Keep the menu item's check mark
+            // in sync with the flag (the native menu does this automatically
+            // for CheckMenuItem, but re-assert for safety).
+            let state = app.state::<AppState>();
+            let next = !*state.dev_mode.lock().unwrap();
+            *state.dev_mode.lock().unwrap() = next;
+            let _ = app.emit(EVENT_DEV_MODE_TOGGLED, next);
         }
         "quit" => {
             app.exit(0);

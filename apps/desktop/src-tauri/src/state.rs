@@ -97,6 +97,8 @@ pub struct AppState {
     pub input_action: InputActionState,
     /// Whether drag-drop archive (compress/extract) is enabled.
     pub archive_settings: Mutex<ArchiveSettings>,
+    /// Whether Dev (debug overlay) mode is on. Toggled via the right-click menu.
+    pub dev_mode: Mutex<bool>,
 }
 
 impl AppState {
@@ -115,6 +117,7 @@ impl AppState {
                 cooldown_until: Mutex::new(None),
             },
             archive_settings: Mutex::new(ArchiveSettings::default()),
+            dev_mode: Mutex::new(false),
         }
     }
 }
